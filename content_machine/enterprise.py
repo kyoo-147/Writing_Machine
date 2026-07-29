@@ -125,20 +125,24 @@ def _terms(text: str) -> set[str]:
 
 
 class ClaimChecker:
-    NEGATIONS = {"not", "never", "without", "fails", "lower", "higher"}
+    NEGATIONS = {"not", "never", "without", "fails", "no"}
 
     def check(self, claim: str, evidence: list[Story]) -> dict[str, Any]:
         terms = _terms(claim)
         ranked = sorted(evidence, key=lambda item: len(terms & _terms(f"{item.title} {item.summary}")) / max(1, len(terms)), reverse=True)
         best = ranked[0] if ranked else None
-        entailment = len(terms & _terms(f"{best.title} {best.summary}")) / max(1, len(terms)) if best else 0.0
-        claim_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", claim))
-        evidence_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", best.summary if best else ""))
+        candidates = re.split(r"(?<=[.!?])\s+", f"{best.title}. {best.summary}") if best else []
+        excerpt = max(candidates, key=lambda text: len(terms & _terms(text)), default="")
+        entailment = len(terms & _terms(excerpt)) / max(1, len(terms))
+        quantitative = "%" in claim or "$" in claim or bool(re.search(r"\d+\s+(?:tokens?|seconds?|views?|likes?|reposts?|bookmarks?)", claim.lower()))
+        claim_numbers = set(re.findall(r"\$?\d+(?:\.\d+)?%?", claim)) if quantitative else set()
+        evidence_numbers = set(re.findall(r"\$?\d+(?:\.\d+)?%?", excerpt))
         number_conflict = bool(claim_numbers and evidence_numbers and not claim_numbers.issubset(evidence_numbers))
-        negation_conflict = bool(best and entailment > 0.45 and bool(terms & self.NEGATIONS) != bool(_terms(best.summary) & self.NEGATIONS))
+        negation_conflict = bool(best and entailment > 0.55 and bool(terms & self.NEGATIONS) != bool(_terms(excerpt) & self.NEGATIONS))
         verdict = "contradicted" if number_conflict or negation_conflict else "verified" if entailment >= 0.55 else "unverified"
         return {"claim": claim, "verdict": verdict, "entailment": round(entailment, 3),
-                "evidence_url": best.url if best else "", "number_conflict": number_conflict}
+                "evidence_url": best.url if best else "", "evidence_excerpt": excerpt,
+                "number_conflict": number_conflict}
 
     def validate_citation(self, claim: str, source: Story) -> dict[str, Any]:
         result = self.check(claim, [source])

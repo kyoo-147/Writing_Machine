@@ -85,11 +85,12 @@ class ContentMachine:
         evidence_rows = self.db.execute("SELECT payload FROM stories ORDER BY score DESC LIMIT 100").fetchall()
         evidence = [Story(**json.loads(row[0])) for row in evidence_rows]
         checker = ClaimChecker()
+        self.db.execute("DELETE FROM claims WHERE story_id=?", (story.id,))
         ledger = []
         for claim in claims:
             checked = checker.check(claim, evidence)
             verdict = checked["verdict"]
-            evidence_text = next((item.summary[:500] for item in evidence if item.url == checked["evidence_url"]), "")
+            evidence_text = checked.get("evidence_excerpt", "")
             ledger.append({"claim": claim, "verdict": verdict, "entailment": checked["entailment"],
                            "evidence": evidence_text or "A second primary source is required before asserting this claim.",
                            "source_url": checked["evidence_url"]})
