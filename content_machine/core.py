@@ -107,6 +107,21 @@ class Database:
             f"""CREATE TABLE IF NOT EXISTS schedules (
                 row_id {id_type}, command TEXT, run_at TEXT, interval_minutes INTEGER,
                 enabled INTEGER DEFAULT 1, last_run TEXT)""",
+            f"""CREATE TABLE IF NOT EXISTS metric_snapshots (
+                row_id {id_type}, story_id TEXT, platform TEXT, views INTEGER, likes INTEGER,
+                comments INTEGER, shares INTEGER, reposts INTEGER, bookmarks INTEGER, captured_at TEXT)""",
+            f"""CREATE TABLE IF NOT EXISTS workspaces (
+                row_id {id_type}, workspace_id TEXT UNIQUE, name TEXT, created_at TEXT)""",
+            f"""CREATE TABLE IF NOT EXISTS members (
+                row_id {id_type}, workspace_id TEXT, user_id TEXT, role TEXT,
+                UNIQUE(workspace_id,user_id))""",
+            f"""CREATE TABLE IF NOT EXISTS reviews (
+                row_id {id_type}, story_id TEXT, reviewer_id TEXT, decision TEXT,
+                comment TEXT, created_at TEXT)""",
+            f"""CREATE TABLE IF NOT EXISTS jobs (
+                row_id {id_type}, job_id TEXT UNIQUE, command TEXT, payload TEXT, status TEXT,
+                attempts INTEGER DEFAULT 0, max_attempts INTEGER DEFAULT 3, available_at TEXT,
+                locked_at TEXT, last_error TEXT, created_at TEXT, updated_at TEXT)""",
         ]:
             self.execute(sql)
 
@@ -160,6 +175,27 @@ class Database:
         fp = fingerprint(title, url)
         return bool(self.execute("SELECT 1 FROM archive WHERE fingerprint=?", (fp,)).fetchone())
 
+    def record_metrics(self, story_id: str, platform: str, values: dict[str, Any]) -> None:
+        self.execute(
+            """INSERT INTO metric_snapshots(story_id,platform,views,likes,comments,shares,reposts,bookmarks,captured_at)
+            VALUES(?,?,?,?,?,?,?,?,?)""",
+            (story_id, platform, *(int(values.get(k, 0) or 0) for k in
+              ("views", "likes", "comments", "shares", "reposts", "bookmarks")), utcnow()),
+        )
+
+    def metric_velocity(self, story_id: str) -> dict[str, float]:
+        rows = self.execute(
+            """SELECT views,likes,comments,shares,reposts,bookmarks,captured_at
+            FROM metric_snapshots WHERE story_id=? ORDER BY captured_at DESC LIMIT 2""", (story_id,)
+        ).fetchall()
+        if len(rows) < 2:
+            return {"views_per_hour": 0.0, "engagement_per_hour": 0.0}
+        latest, previous = rows[0], rows[1]
+        seconds = max(1.0, datetime.fromisoformat(latest[6]).timestamp() - datetime.fromisoformat(previous[6]).timestamp())
+        views = max(0, latest[0] - previous[0]) * 3600 / seconds
+        engagement = max(0, sum(latest[1:6]) - sum(previous[1:6])) * 3600 / seconds
+        return {"views_per_hour": round(views, 2), "engagement_per_hour": round(engagement, 2)}
+
 
 def similarity(a: str, b: str) -> float:
     aa = set(re.findall(r"\w+", a.lower()))
@@ -200,10 +236,11 @@ def score_story(story: Story, now: float | None = None) -> float:
                 pass
     novelty = max(1.0, 10.0 - min(age_days, 30.0) * 0.3)
     host = urllib.parse.urlsplit(story.url).netloc.lower()
-    primary_hosts = ("github.com", "arxiv.org", "openai.com", "anthropic.com", "deepmind.google", "ai.google")
+    primary_hosts = ("github.com", "arxiv.org", "openai.com", "anthropic.com", "deepmind.google", "ai.google", "blog.google")
     defaults = {
         "novelty": novelty,
-        "visual": 8.0 if any(x in text for x in ("demo", "video", "image", "multimodal", "robot")) else 5.0,
+        "visual": 8.0 if story.metadata.get("image") or story.metadata.get("media") or any(
+            x in text for x in ("demo", "video", "image", "multimodal", "robot")) else 5.0,
         "buildability": 8.0 if any(x in text for x in ("github", "open source", "api", "sdk", "code")) else 5.0,
         "engineering": 8.0 if any(x in text for x in ("agent", "model", "benchmark", "inference", "research")) else 6.0,
         "authority": 9.0 if story.kind in {"paper", "release"} or any(host.endswith(x) for x in primary_hosts) else 6.0,

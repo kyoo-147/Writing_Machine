@@ -1,0 +1,10 @@
+{
+  "query": "AI agents",
+  "count": 10,
+  "sources": [
+    "github",
+    "arxiv",
+    "rss"
+  ]
+}
+

@@ -1,0 +1,14 @@
+{
+  "platform": "x",
+  "url": "https://x.com/example/status/123",
+  "author": "@example",
+  "text": "Visible post text",
+  "published_at": "2026-07-29T00:00:00Z",
+  "views": 0,
+  "likes": 0,
+  "comments": 0,
+  "reposts": 0,
+  "bookmarks": 0,
+  "shares": 0,
+  "media": []
+}

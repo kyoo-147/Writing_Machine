@@ -7,13 +7,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .core import Story
 
 
-UA = "VN-Content-Machine/0.2 (+https://github.com/kyoo-147/Writing_Machine)"
+UA = "VN-Content-Machine/0.3 (+https://github.com/kyoo-147/Writing_Machine)"
 
 
 def request(url: str, *, headers: dict[str, str] | None = None, data: dict[str, Any] | None = None) -> bytes:
@@ -136,4 +137,91 @@ DEFAULT_RSS = [
     "https://www.anthropic.com/rss.xml",
     "https://huggingface.co/blog/feed.xml",
 ]
+
+
+class _ArticleParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.description = ""
+        self.image = ""
+        self.published = ""
+        self._in_title = False
+        self._article_depth = 0
+        self._ignored_depth = 0
+        self._text: list[str] = []
+        self._article_text: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "title":
+            self._in_title = True
+        if tag == "article":
+            self._article_depth += 1
+        if tag in {"script", "style", "template", "svg"}:
+            self._ignored_depth += 1
+        if tag == "meta":
+            key = attributes.get("property") or attributes.get("name") or ""
+            value = attributes.get("content", "")
+            if key in {"og:title", "twitter:title"} and value:
+                self.title = self.title or value
+            elif key in {"description", "og:description", "twitter:description"} and value:
+                self.description = self.description or value
+            elif key in {"og:image", "twitter:image"} and value:
+                self.image = self.image or value
+            elif key in {"article:published_time", "date", "datePublished"} and value:
+                self.published = self.published or value
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+        if tag == "article" and self._article_depth:
+            self._article_depth -= 1
+        if tag in {"script", "style", "template", "svg"} and self._ignored_depth:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data):
+        clean = re.sub(r"\s+", " ", data).strip()
+        if self._in_title and clean and not self.title:
+            self.title = clean
+        if clean and not self._ignored_depth:
+            self._text.append(clean)
+            if self._article_depth:
+                self._article_text.append(clean)
+
+
+def collect_web(url: str) -> list[Story]:
+    parser = _ArticleParser()
+    parser.feed(request(url).decode("utf-8", errors="replace"))
+    article = " ".join(parser._article_text or parser._text)
+    summary = f"{parser.description} {article}".strip()
+    return [Story(
+        title=parser.title or url,
+        url=url,
+        source=urllib.parse.urlsplit(url).netloc,
+        summary=summary[:5000],
+        published_at=parser.published,
+        kind="web",
+        metadata={"image": parser.image},
+    )]
+
+
+def story_from_social(payload: dict[str, Any]) -> Story:
+    platform = str(payload.get("platform", "social")).lower()
+    author = payload.get("author") or payload.get("handle") or "unknown"
+    text = str(payload.get("text") or payload.get("caption") or "")
+    metrics = {
+        key: int(payload.get(key, 0) or 0)
+        for key in ("views", "likes", "comments", "reposts", "bookmarks", "shares")
+    }
+    engagement = sum(metrics[key] for key in ("likes", "comments", "reposts", "bookmarks", "shares"))
+    return Story(
+        title=f"{author}: {text[:180]}",
+        url=str(payload.get("url", "")),
+        source=platform.upper(),
+        summary=text,
+        published_at=str(payload.get("published_at", "")),
+        kind="social",
+        metadata={**payload, **metrics, "engagement": engagement},
+    )
 

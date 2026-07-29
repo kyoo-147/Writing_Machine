@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -13,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .connectors import DEFAULT_RSS, collect_apify, collect_arxiv, collect_firecrawl, collect_github, collect_github_releases, collect_rss, request
+from .connectors import DEFAULT_RSS, collect_apify, collect_arxiv, collect_firecrawl, collect_github, collect_github_releases, collect_rss, collect_web, request, story_from_social
 from .core import Database, Story, deduplicate, fingerprint, qa_canary, score_story, slugify, utcnow
 
 
@@ -47,6 +48,8 @@ class ContentMachine:
                     stories += collect_apify(source.split(":", 1)[1], {"search": query, "maxItems": count})
                 elif source.startswith("releases:"):
                     stories += collect_github_releases(source.split(":", 1)[1].split(","))
+                elif source.startswith("web:"):
+                    stories += collect_web(source.split(":", 1)[1])
             except Exception as exc:
                 errors.append({"source": source, "error": str(exc)})
         stories = [s for s in deduplicate(stories) if not self.db.is_archived(s.title, s.url)]
@@ -57,25 +60,48 @@ class ContentMachine:
         self.db.event("discover", payload={"query": query, "found": len(stories), "errors": errors, "canary": qa_canary(self.db, "discover")})
         return stories[:count]
 
+    def ingest_social(self, payload: dict[str, Any]) -> Story:
+        story = story_from_social(payload).finalize()
+        self.db.record_metrics(story.id, story.source, story.metadata)
+        velocity = self.db.metric_velocity(story.id)
+        story.metadata["velocity"] = velocity
+        if velocity["views_per_hour"] or velocity["engagement_per_hour"]:
+            story.signals["discussion"] = min(10.0, 5.0 + math.log10(1 + velocity["engagement_per_hour"]))
+            story.signals["novelty"] = min(10.0, 7.0 + math.log10(1 + velocity["views_per_hour"]) / 2)
+        score_story(story)
+        self.db.save_story(story)
+        self.db.event("social_ingested", story.id, {"platform": story.source})
+        return story
+
     def develop(self, story_id: str) -> dict[str, Any]:
+        from .enterprise import ClaimChecker
+
         story = self.db.get_story(story_id)
         if not story:
             raise KeyError(f"Unknown story: {story_id}")
         text = f"{story.title}. {story.summary}"
         claims = self._claims(text)
         sources = self._citation_urls(story)
+        evidence_rows = self.db.execute("SELECT payload FROM stories ORDER BY score DESC LIMIT 100").fetchall()
+        evidence = [Story(**json.loads(row[0])) for row in evidence_rows]
+        checker = ClaimChecker()
         ledger = []
         for claim in claims:
-            verdict = "verified" if story.url and story.source in {"GitHub", "arXiv"} or story.kind in {"paper", "release"} else "unverified"
-            evidence = story.summary[:500] if verdict == "verified" else "A second primary source is required before asserting this claim."
-            ledger.append({"claim": claim, "verdict": verdict, "evidence": evidence, "source_url": story.url})
+            checked = checker.check(claim, evidence)
+            verdict = checked["verdict"]
+            evidence_text = next((item.summary[:500] for item in evidence if item.url == checked["evidence_url"]), "")
+            ledger.append({"claim": claim, "verdict": verdict, "entailment": checked["entailment"],
+                           "evidence": evidence_text or "A second primary source is required before asserting this claim.",
+                           "source_url": checked["evidence_url"]})
             self.db.execute(
                 "INSERT INTO claims(story_id,claim,verdict,evidence,source_url,checked_at) VALUES(?,?,?,?,?,?)",
-                (story.id, claim, verdict, evidence, story.url, utcnow()),
+                (story.id, claim, verdict, evidence_text, checked["evidence_url"], utcnow()),
             )
         result = {
             "story": asdict(story), "claims": ledger,
-            "citations": [{"url": u, "valid": self.validate_citation(u)} for u in sources],
+            "citations": [{"url": u, "valid": self.validate_citation(u),
+                           "semantic": checker.validate_citation(claims[0], next(
+                               (item for item in evidence if item.url == u), story))} for u in sources],
             "angles": [
                 {"type": "news", "hook": f"{story.title}: what is actually new?"},
                 {"type": "technical", "hook": "If we rebuild this demo, where is the hard engineering work?"},
@@ -242,5 +268,7 @@ class ContentMachine:
             "stories": scalar("SELECT COUNT(*) FROM stories"),
             "packages": scalar("SELECT COUNT(*) FROM packages"),
             "published": scalar("SELECT COUNT(*) FROM archive"),
+            "pending_reviews": scalar("SELECT COUNT(*) FROM packages WHERE status='ready'"),
+            "failed_jobs": scalar("SELECT COUNT(*) FROM jobs WHERE status='failed'"),
             "events": [{"event": r[0], "count": r[1]} for r in events],
         }

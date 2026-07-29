@@ -9,9 +9,11 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .core import Database
 from .dashboard import serve
+from .enterprise import AccessControl, JobQueue, LLMWriter, MediaGenerator, OAuthManager, PlatformAnalytics, PlatformPublisher
 from .pipeline import ContentMachine
 
 
@@ -34,9 +36,36 @@ def build_parser() -> argparse.ArgumentParser:
     prod.add_argument("--platform", default="tiktok")
     prod.add_argument("--format", default="carousel")
     prod.add_argument("--tone", default="skeptical")
+    prod.add_argument("--llm", action="store_true")
+    prod.add_argument("--language", default="vi")
+    prod.add_argument("--voice", default="skeptical-builder")
     pub = sub.add_parser("publish", help="Publish through a configured adapter")
     pub.add_argument("story_id"); pub.add_argument("--platform", required=True)
-    pub.add_argument("--approve", action="store_true"); pub.add_argument("--webhook")
+    pub.add_argument("--approve", action="store_true"); pub.add_argument("--webhook"); pub.add_argument("--native", action="store_true")
+    ingest = sub.add_parser("ingest", help="Ingest a public article URL")
+    ingest.add_argument("url")
+    social = sub.add_parser("ingest-social", help="Ingest structured data exported from an authenticated browser")
+    social.add_argument("json_file")
+    queue = sub.add_parser("queue", help="Manage persistent retryable jobs")
+    queue.add_argument("action", choices=["add", "lease", "complete", "fail", "stats", "work"])
+    queue.add_argument("--job-id"); queue.add_argument("--job-command"); queue.add_argument("--payload", default="{}")
+    queue.add_argument("--payload-file")
+    workspace = sub.add_parser("workspace", help="Manage workspace RBAC")
+    workspace.add_argument("action", choices=["create", "add-member", "check"])
+    workspace.add_argument("--name"); workspace.add_argument("--workspace-id"); workspace.add_argument("--user-id")
+    workspace.add_argument("--role"); workspace.add_argument("--permission")
+    review = sub.add_parser("review", help="Record an editorial decision")
+    review.add_argument("story_id"); review.add_argument("--reviewer", required=True)
+    review.add_argument("--decision", required=True, choices=["approved", "changes_requested", "rejected"])
+    review.add_argument("--comment", default="")
+    metrics = sub.add_parser("platform-analytics", help="Fetch post-publish metrics")
+    metrics.add_argument("platform"); metrics.add_argument("external_id")
+    oauth = sub.add_parser("oauth", help="Create an OAuth URL or securely exchange a code")
+    oauth.add_argument("action", choices=["url", "exchange"]); oauth.add_argument("platform", choices=["x", "facebook", "tiktok"])
+    oauth.add_argument("--state", default="content-machine"); oauth.add_argument("--code-challenge", default="")
+    oauth.add_argument("--code-verifier", default="")
+    media = sub.add_parser("generate-media", help="Generate model-backed image or video assets")
+    media.add_argument("story_id"); media.add_argument("kind", choices=["image", "video"]); media.add_argument("--prompt")
     sub.add_parser("analytics")
     dash = sub.add_parser("dashboard"); dash.add_argument("--host", default="127.0.0.1"); dash.add_argument("--port", type=int, default=8787)
     sched = sub.add_parser("schedule"); sched.add_argument("action", choices=["add", "list", "run"])
@@ -129,17 +158,97 @@ def open_browser(url: str, backend: str = "auto", profile: str = "research") -> 
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args(argv)
     if args.command == "dashboard":
-        serve(args.host, args.port); return 0
+        serve(args.host, args.port, args.database); return 0
     db = Database(args.database)
     machine = ContentMachine(db)
     try:
         if args.command == "discover":
             emit([vars(s) for s in machine.discover(args.query, args.count, [x.strip() for x in args.sources.split(",")])])
         elif args.command == "develop": emit(machine.develop(args.story_id))
-        elif args.command == "produce": emit(machine.produce(args.story_id, args.platform, args.format, args.tone))
-        elif args.command == "publish": emit(machine.publish(args.story_id, args.platform, args.approve, args.webhook))
+        elif args.command == "produce":
+            package = machine.produce(args.story_id, args.platform, args.format, args.tone)
+            if args.llm:
+                story = db.get_story(args.story_id)
+                profiles = json.loads(Path("config/voice-profiles.json").read_text(encoding="utf-8"))
+                generated = LLMWriter().generate(story, profiles[args.voice], args.platform, args.language)
+                target = Path(package["path"], "llm-package.json")
+                target.write_text(json.dumps(generated, ensure_ascii=False, indent=2), encoding="utf-8")
+                package["llm_package"] = str(target)
+            emit(package)
+        elif args.command == "publish":
+            if args.native:
+                if not args.approve:
+                    emit({"status": "dry-run", "message": "Add --approve after human review."})
+                else:
+                    row = db.execute("SELECT payload FROM packages WHERE story_id=? ORDER BY row_id DESC LIMIT 1", (args.story_id,)).fetchone()
+                    if not row:
+                        raise RuntimeError("Produce the package first.")
+                    emit(PlatformPublisher(args.platform).publish(json.loads(row[0])))
+            else:
+                emit(machine.publish(args.story_id, args.platform, args.approve, args.webhook))
+        elif args.command == "ingest":
+            emit([vars(s) for s in machine.discover(args.url, 1, [f"web:{args.url}"])])
+        elif args.command == "ingest-social":
+            emit(vars(machine.ingest_social(json.loads(Path(args.json_file).read_text(encoding="utf-8")))))
+        elif args.command == "queue":
+            queue = JobQueue(db)
+            if args.action == "add":
+                if not args.job_command:
+                    raise ValueError("--job-command is required")
+                raw_payload = Path(args.payload_file).read_text(encoding="utf-8") if args.payload_file else args.payload
+                emit({"job_id": queue.enqueue(args.job_command, json.loads(raw_payload))})
+            elif args.action == "lease": emit(queue.lease())
+            elif args.action == "complete": queue.complete(args.job_id); emit({"status": "completed"})
+            elif args.action == "fail": queue.fail(args.job_id, "Manually failed"); emit({"status": "recorded"})
+            elif args.action == "work":
+                job = queue.lease()
+                if not job:
+                    emit({"status": "idle"})
+                else:
+                    try:
+                        payload = job["payload"]
+                        if job["command"] == "discover":
+                            result = [vars(s) for s in machine.discover(**payload)]
+                        elif job["command"] == "develop":
+                            result = machine.develop(**payload)
+                        elif job["command"] == "produce":
+                            result = machine.produce(**payload)
+                        else:
+                            raise ValueError(f"Unsupported queued command: {job['command']}")
+                        queue.complete(job["job_id"])
+                        emit({"status": "completed", "job_id": job["job_id"], "result": result})
+                    except Exception as exc:
+                        queue.fail(job["job_id"], str(exc))
+                        raise
+            else: emit(queue.stats())
+        elif args.command == "workspace":
+            access = AccessControl(db)
+            if args.action == "create": emit({"workspace_id": access.create_workspace(args.name)})
+            elif args.action == "add-member": access.add_member(args.workspace_id, args.user_id, args.role); emit({"status": "added"})
+            else: access.require(args.workspace_id, args.user_id, args.permission); emit({"allowed": True})
+        elif args.command == "review":
+            AccessControl(db).review(args.story_id, args.reviewer, args.decision, args.comment); emit({"status": args.decision})
+        elif args.command == "platform-analytics": emit(PlatformAnalytics().fetch(args.platform, args.external_id))
+        elif args.command == "oauth":
+            manager = OAuthManager()
+            if args.action == "url": emit({"url": manager.authorization_url(args.platform, args.state, args.code_challenge)})
+            else:
+                import getpass
+                code = os.getenv("OAUTH_CODE") or getpass.getpass("Authorization code: ")
+                emit(manager.exchange(args.platform, code, args.code_verifier))
+        elif args.command == "generate-media":
+            story = db.get_story(args.story_id)
+            if not story:
+                raise KeyError(args.story_id)
+            prompt = args.prompt or f"Editorial technology visual, no logos, illustrating: {story.title}"
+            target = Path("data/assets", story.id, "generated.png" if args.kind == "image" else "generated.mp4")
+            generator = MediaGenerator()
+            result = generator.generate_image(prompt, target) if args.kind == "image" else generator.generate_video(prompt, target)
+            emit({"path": str(result), "kind": args.kind})
         elif args.command == "analytics": emit(machine.analytics())
         elif args.command == "schedule": emit(scheduler(db, args.action, args.job_command, args.run_at, args.every))
         elif args.command == "chat": chat(machine)

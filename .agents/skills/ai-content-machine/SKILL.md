@@ -27,6 +27,10 @@ Use the real CLI for every phase so results are persisted, deduplicated, auditab
 .\cm.ps1 dashboard
 ```
 
+When Browser is used for an authenticated social page, extract only visible post fields into the `ingest-social` contract: platform, URL, author, text, published timestamp, metrics, and media metadata. Never extract cookies or storage. Feed that JSON to `.\cm.ps1 ingest-social <file>`.
+
+Use `produce --llm` when a configured model provider is available. Otherwise let the active agent write in the user's language and preserve the same package schema. Native publishing always requires an approved review, explicit `--approve`, platform OAuth scopes, and a final user-confirmed publishing request.
+
 For a conversational terminal, run `.\cm.ps1 chat`. Infer discover, develop, and produce intents from the user's language; keep project files in English and answer in the user's language.
 
 At the end of each phase, confirm its QA canary exists in the database event log. Canary text is internal only and must never appear in public scripts, captions, assets, or posts.

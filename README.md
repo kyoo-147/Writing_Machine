@@ -9,8 +9,11 @@ cd D:\working\Content_Machine
 python -m pip install -e .
 .\cm.ps1 doctor
 .\cm.ps1 discover "AI agents" --count 10
+.\cm.ps1 ingest "https://blog.google/example"
+.\cm.ps1 ingest-social .\browser-export.json
 .\cm.ps1 develop <story-id>
 .\cm.ps1 produce <story-id> --platform tiktok --format carousel --tone skeptical
+.\cm.ps1 produce <story-id> --platform tiktok --llm --language vi --voice skeptical-builder
 .\cm.ps1 dashboard
 ```
 
@@ -48,6 +51,25 @@ Publishing is intentionally gated:
 ```
 
 The first command is a dry run. The approved command requires `TIKTOK_PUBLISH_WEBHOOK` (or a `--webhook`) and archives the result to prevent reposting.
+
+Native platform adapters are also available after OAuth configuration:
+
+```powershell
+.\cm.ps1 oauth url x --state <random-state> --code-challenge <pkce-challenge>
+.\cm.ps1 publish <story-id> --platform x --native --approve
+.\cm.ps1 platform-analytics x <post-id>
+```
+
+Authorization codes are read from a hidden prompt or `OAUTH_CODE`; tokens are stored through the operating-system keyring. The project never writes OAuth tokens to its database.
+
+Retryable workers and editorial controls:
+
+```powershell
+.\cm.ps1 queue add --job-command discover --payload-file .\discover-job.json
+.\cm.ps1 queue work
+.\cm.ps1 workspace create --name Editorial
+.\cm.ps1 review <story-id> --reviewer editor@example.com --decision approved
+```
 
 See [the product plan](docs/ENTERPRISE_PRODUCT_PLAN.md), [repository catalog](docs/REPO_CATALOG.md), and [pinned dependencies](VENDOR_LOCK.md).
 
