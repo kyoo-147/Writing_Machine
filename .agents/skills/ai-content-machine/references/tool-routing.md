@@ -12,6 +12,9 @@
 | Screenshot or repeatable UI flow | agent-browser | BrowserOS CLI | Stable refs and sessions |
 | Internal web-app API discovery | OpenTabs | BrowserOS network tools | API is more stable than DOM |
 | Scheduled research later | BrowserOS scheduled task | orchestrator worker | Local persistent session |
+| Publish with verified platform API | Native adapter | Authenticated browser | Stable, auditable result |
+| Publish from an existing user browser | Callable tool for that exact browser | Manual package | A logged-in tab alone does not grant agent control |
+| No connected publishing route | Manual package | None | Never claim an unperformed publish |
 
 ## Vendored components
 
@@ -74,4 +77,3 @@ Read only the skill relevant to the current production step. Do not copy the ful
 5. Require approval for write actions.
 6. Respect robots directives, platform terms, rate limits, copyrights, and privacy.
 7. Do not circumvent anti-bot challenges.
-

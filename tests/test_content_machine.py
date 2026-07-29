@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from content_machine.core import Database, Story, deduplicate, fingerprint, score_story
+from content_machine.cli import publishing_capabilities
 from content_machine.pipeline import ContentMachine
 
 
@@ -79,6 +80,15 @@ class ContentMachineTests(unittest.TestCase):
         self.assertEqual(
             fingerprint("Same", "https://example.com/a?utm_source=x"),
             fingerprint("Same", "https://example.com/a"),
+        )
+
+    def test_publish_capabilities_do_not_assume_browser_session(self):
+        capabilities = publishing_capabilities("tiktok")
+        self.assertEqual(capabilities["routes"]["browser_runtime"]["status"], "inspect-agent-tools")
+        self.assertTrue(capabilities["routes"]["manual_package"]["available"])
+        self.assertIn(
+            capabilities["routes"]["native_api"]["status"],
+            {"missing-credentials", "init-only-until-media-upload-is-verified"},
         )
 
 

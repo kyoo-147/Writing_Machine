@@ -30,6 +30,8 @@ Use the real CLI for every phase so results are persisted, deduplicated, auditab
 .\cm.ps1 dashboard
 ```
 
+Before any publishing promise or action, read [publishing-routing.md](references/publishing-routing.md), run `.\cm.ps1 publish-capabilities --platform <platform>`, and inspect the current agent's callable tools. A skill describes how to use capabilities; it does not grant browser access, authentication, platform scopes, or credentials.
+
 When Browser is used for an authenticated social page, extract only visible post fields into the `ingest-social` contract: platform, URL, author, text, published timestamp, metrics, and media metadata. Never extract cookies or storage. Feed that JSON to `.\cm.ps1 ingest-social <file>`.
 
 Use `produce --llm` when a configured model provider is available. Otherwise let the active agent write in the user's language and preserve the same package schema. Native publishing always requires an approved review, explicit `--approve`, platform OAuth scopes, and a final user-confirmed publishing request.
@@ -126,6 +128,16 @@ For X and Facebook:
 - Otherwise use BrowserClaw/BrowserOS in a dedicated profile.
 - Use agent-browser with a persistent isolated profile only as fallback.
 - Keep human approval for posting, messaging, account changes, and downloads with unclear rights.
+
+## Publish
+
+1. Confirm the exact package, destination account, and user approval.
+2. Negotiate capabilities using [publishing-routing.md](references/publishing-routing.md).
+3. Use only an end-to-end capable route. Do not infer access from installed repositories, executables, or an unrelated logged-in browser.
+4. Verify the destination account before upload.
+5. For multiple posts, publish sequentially and check the archive before each post.
+6. Report success only with a visible success state and post ID or public URL.
+7. If no safe route exists, return the manual package and state that publishing did not occur.
 
 ## Output contract
 

@@ -65,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     oauth.add_argument("action", choices=["url", "exchange"]); oauth.add_argument("platform", choices=["x", "facebook", "tiktok"])
     oauth.add_argument("--state", default="content-machine"); oauth.add_argument("--code-challenge", default="")
     oauth.add_argument("--code-verifier", default="")
+    capabilities = sub.add_parser("publish-capabilities", help="Inspect safe publishing routes without exposing credentials")
+    capabilities.add_argument("--platform", choices=["tiktok", "facebook", "x"], default="tiktok")
     sub.add_parser("analytics")
     dash = sub.add_parser("dashboard"); dash.add_argument("--host", default="127.0.0.1"); dash.add_argument("--port", type=int, default=8787)
     sched = sub.add_parser("schedule"); sched.add_argument("action", choices=["add", "list", "run"])
@@ -156,6 +158,39 @@ def open_browser(url: str, backend: str = "auto", profile: str = "research") -> 
     return {"status": "opened", "url": url, "backend": backend, "instruction": "Complete login and MFA manually. Browser session data is not exported."}
 
 
+def publishing_capabilities(platform: str) -> dict[str, object]:
+    token_names = {
+        "tiktok": "TIKTOK_ACCESS_TOKEN",
+        "facebook": "META_ACCESS_TOKEN",
+        "x": "X_ACCESS_TOKEN",
+    }
+    native_configured = bool(os.getenv(token_names[platform]))
+    native_status = "configured" if native_configured else "missing-credentials"
+    if platform == "tiktok" and native_configured:
+        native_status = "init-only-until-media-upload-is-verified"
+    return {
+        "platform": platform,
+        "routes": {
+            "native_api": {
+                "configured": native_configured,
+                "status": native_status,
+                "requires_explicit_approval": True,
+            },
+            "browser_runtime": {
+                "status": "inspect-agent-tools",
+                "note": "A logged-in user browser is usable only when the current agent has a callable browser surface for it.",
+            },
+            "browser_cli": {
+                "agent_browser": bool(shutil.which("agent-browser")),
+                "opentabs": bool(shutil.which("opentabs")),
+                "browseros": bool(shutil.which("browseros-cli") or shutil.which("bos")),
+                "note": "CLI availability does not imply that the user's existing browser session is connected.",
+            },
+            "manual_package": {"available": True},
+        },
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -244,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
                 import getpass
                 code = os.getenv("OAUTH_CODE") or getpass.getpass("Authorization code: ")
                 emit(manager.exchange(args.platform, code, args.code_verifier))
+        elif args.command == "publish-capabilities":
+            emit(publishing_capabilities(args.platform))
         elif args.command == "analytics": emit(machine.analytics())
         elif args.command == "schedule": emit(scheduler(db, args.action, args.job_command, args.run_at, args.every))
         elif args.command == "chat": chat(machine)

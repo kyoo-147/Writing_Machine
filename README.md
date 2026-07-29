@@ -50,11 +50,12 @@ Connectors can be combined:
 Publishing is intentionally gated:
 
 ```powershell
+.\cm.ps1 publish-capabilities --platform tiktok
 .\cm.ps1 publish <story-id> --platform tiktok
 .\cm.ps1 publish <story-id> --platform tiktok --approve
 ```
 
-The first command is a dry run. The approved command requires `TIKTOK_PUBLISH_WEBHOOK` (or a `--webhook`) and archives the result to prevent reposting.
+The capability command reports safe routes without exposing credentials. The unapproved publish command is a dry run. The approved command requires `TIKTOK_PUBLISH_WEBHOOK` (or a `--webhook`) and archives the result to prevent reposting.
 
 Native platform adapters are also available after OAuth configuration:
 
