@@ -2,9 +2,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from content_machine.core import Database, Story, deduplicate, fingerprint, score_story
-from content_machine.cli import publishing_capabilities
+from content_machine.cli import publishing_capabilities, run_scheduled_command, scheduler
 from content_machine.pipeline import ContentMachine
 
 
@@ -103,6 +104,56 @@ class ContentMachineTests(unittest.TestCase):
             capabilities["routes"]["native_api"]["status"],
             {"missing-credentials", "init-only-until-media-upload-is-verified"},
         )
+
+    @patch("content_machine.pipeline.request")
+    def test_webhook_publish_requires_a_stable_receipt_before_archiving(self, mocked_request):
+        story = Story("Verified release", "https://example.com/release", "Example", "Release notes.", kind="release")
+        self.db.save_story(story)
+        self.db.execute(
+            "INSERT INTO packages(story_id,package_path,platform,status,payload,created_at) VALUES(?,?,?,?,?,?)",
+            (story.id, "unused", "tiktok", "ready", json.dumps({"caption": "Ready"}), "2026-07-29T00:00:00+00:00"),
+        )
+        mocked_request.return_value = b'{"status":"accepted"}'
+
+        with self.assertRaisesRegex(RuntimeError, "post ID or public URL"):
+            self.machine.publish(story.id, "tiktok", approve=True, webhook="https://publisher.test")
+
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM archive").fetchone()[0], 0)
+
+        mocked_request.return_value = b'{"data":{"post_id":"post-123","url":"https://social.test/post-123"}}'
+        result = self.machine.publish(story.id, "tiktok", approve=True, webhook="https://publisher.test")
+        self.assertEqual(result["external_id"], "post-123")
+        self.assertEqual(result["public_url"], "https://social.test/post-123")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM archive").fetchone()[0], 1)
+
+    def test_develop_does_not_self_verify_source_claims(self):
+        story = Story(
+            "Example model is 50% faster.",
+            "https://example.com/model",
+            "Example",
+            "Example says the model is 50% faster.",
+            kind="release",
+        )
+        self.db.save_story(story)
+
+        developed = self.machine.develop(story.id)
+
+        self.assertTrue(developed["claims"])
+        self.assertTrue(all(claim["verdict"] == "unverified" for claim in developed["claims"]))
+        self.assertTrue(all(claim["verification_basis"] == "no-independent-source" for claim in developed["claims"]))
+        self.assertEqual(developed["citations"][0]["semantic"]["verdict"], "source-supported")
+        self.assertFalse(developed["citations"][0]["semantic"]["independent"])
+
+    @patch("content_machine.cli.subprocess.run")
+    def test_scheduler_executes_parsed_argv_without_a_shell(self, mocked_run):
+        run_scheduled_command("python -m content_machine doctor")
+        mocked_run.assert_called_once_with(
+            ["python", "-m", "content_machine", "doctor"],
+            check=True,
+            shell=False,
+        )
+        with self.assertRaisesRegex(ValueError, "--job-command is required"):
+            scheduler(self.db, "add", None, None, None)
 
 
 if __name__ == "__main__":

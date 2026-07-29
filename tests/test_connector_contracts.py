@@ -3,11 +3,29 @@ import os
 import unittest
 from unittest.mock import patch
 
-from content_machine.connectors import collect_apify, collect_firecrawl, collect_web
+from content_machine.connectors import collect_apify, collect_firecrawl, collect_github, collect_web
 from content_machine.enterprise import PlatformAnalytics
 
 
 class ConnectorContractTests(unittest.TestCase):
+    @patch("content_machine.connectors.request")
+    def test_github_search_returns_repository_semantics(self, mocked_request):
+        mocked_request.return_value = json.dumps({"items": [{
+            "full_name": "example/agent",
+            "description": "Agent toolkit",
+            "html_url": "https://github.com/example/agent",
+            "created_at": "2024-01-02T03:04:05Z",
+            "updated_at": "2026-07-28T03:04:05Z",
+            "pushed_at": "2026-07-29T03:04:05Z",
+            "stargazers_count": 42,
+        }]}).encode()
+
+        story = collect_github("agent", limit=1)[0]
+
+        self.assertEqual(story.kind, "repository")
+        self.assertEqual(story.published_at, "2024-01-02T03:04:05Z")
+        self.assertEqual(story.metadata["pushed_at"], "2026-07-29T03:04:05Z")
+
     @patch("content_machine.connectors.request")
     def test_firecrawl_contract(self, mocked_request):
         mocked_request.return_value = json.dumps({"data": {"markdown": "# Release", "metadata": {"title": "AI Release"}}}).encode()

@@ -1,13 +1,14 @@
 import json
 import os
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from content_machine.connectors import story_from_social
 from content_machine.core import Database, Story, score_story
-from content_machine.enterprise import AccessControl, ClaimChecker, JobQueue, LLMWriter, OAuthManager, ObjectStore, PlatformPublisher
+from content_machine.enterprise import AccessControl, ClaimChecker, JobQueue, LLMWriter, OAuthManager, ObjectStore, PlatformAnalytics, PlatformPublisher
 from content_machine.pipeline import ContentMachine
 
 
@@ -84,6 +85,22 @@ class EnterpriseTests(unittest.TestCase):
             url = OAuthManager().authorization_url("x", "state-123", "challenge-123")
         self.assertIn("code_challenge=challenge-123", url)
         self.assertIn("tweet.write", urllib_parse(url))
+
+    @patch("content_machine.enterprise.request")
+    def test_publisher_and_analytics_use_keyring_oauth_token(self, mocked_request):
+        mocked_request.return_value = b'{"data":{"id":"123"}}'
+        fake_keyring = types.SimpleNamespace(
+            get_password=lambda service, platform: json.dumps({"access_token": f"{platform}-oauth-token"})
+        )
+
+        with patch.dict(os.environ, {}, clear=True), patch.dict("sys.modules", {"keyring": fake_keyring}):
+            PlatformPublisher("x").publish({"caption": "Test post"})
+            publisher_headers = mocked_request.call_args.kwargs["headers"]
+            PlatformAnalytics().fetch("x", "123")
+            analytics_headers = mocked_request.call_args.kwargs["headers"]
+
+        self.assertEqual(publisher_headers["Authorization"], "Bearer x-oauth-token")
+        self.assertEqual(analytics_headers["Authorization"], "Bearer x-oauth-token")
 
 
 def urllib_parse(url):

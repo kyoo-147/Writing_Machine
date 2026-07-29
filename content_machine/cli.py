@@ -112,7 +112,7 @@ def chat(machine: ContentMachine) -> None:
 def scheduler(db: Database, action: str, command: str | None, run_at: str | None, every: int | None):
     if action == "add":
         if not command:
-            raise ValueError("--command is required")
+            raise ValueError("--job-command is required")
         db.execute("INSERT INTO schedules(command,run_at,interval_minutes,enabled) VALUES(?,?,?,1)", (command, run_at, every))
         return {"status": "scheduled", "command": command}
     if action == "list":
@@ -127,9 +127,16 @@ def scheduler(db: Database, action: str, command: str | None, run_at: str | None
             if interval and (not last or (now - datetime.fromisoformat(last)).total_seconds() >= interval * 60):
                 due = True
             if due:
-                os.system(cmd)
+                run_scheduled_command(cmd)
                 db.execute("UPDATE schedules SET last_run=? WHERE row_id=?", (now.isoformat(), rid))
         time.sleep(15)
+
+
+def run_scheduled_command(command: str) -> None:
+    argv = shlex.split(command, posix=os.name != "nt")
+    if not argv:
+        raise ValueError("Scheduled command cannot be empty")
+    subprocess.run(argv, check=True, shell=False)
 
 
 def open_browser(url: str, backend: str = "auto", profile: str = "research") -> dict[str, str]:
@@ -159,12 +166,7 @@ def open_browser(url: str, backend: str = "auto", profile: str = "research") -> 
 
 
 def publishing_capabilities(platform: str) -> dict[str, object]:
-    token_names = {
-        "tiktok": "TIKTOK_ACCESS_TOKEN",
-        "facebook": "META_ACCESS_TOKEN",
-        "x": "X_ACCESS_TOKEN",
-    }
-    native_configured = bool(os.getenv(token_names[platform]))
+    native_configured = bool(OAuthManager.access_token(platform, required=False))
     native_status = "configured" if native_configured else "missing-credentials"
     if platform == "tiktok" and native_configured:
         native_status = "init-only-until-media-upload-is-verified"
