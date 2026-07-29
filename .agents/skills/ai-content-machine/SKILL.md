@@ -18,6 +18,7 @@ Operate as the conversational coordinator for the VN Tech Lab content pipeline. 
 4. Never publish automatically unless the user explicitly enables a later publishing phase.
 5. Source media is mandatory. Every production package must contain at least one image or video taken from the original source or another user-approved source, with provenance and attribution. Do not complete production without it.
 6. Never create SVG assets. If the user explicitly requests an original illustration or architecture diagram, invoke the installed ImageGen skill and save the result as PNG or JPG. ImageGen output is optional supporting media and never replaces the mandatory source media.
+7. For TikTok, include no more than five hashtags. Prefer current trend signals that are genuinely relevant to the topic, then add specific technology and channel tags. Never add an unrelated viral hashtag merely because it is popular.
 
 Use the real CLI for every phase so results are persisted, deduplicated, auditable, and reusable:
 
@@ -105,14 +106,15 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
    - upload checklist
 5. Use source media as the required visual baseline and add explicit source attribution to the caption. Reject production if source media is missing.
 6. Do not add generated covers, decorative AI art, or placeholder videos. When an illustration is explicitly requested, use the ImageGen skill, output PNG/JPG, and keep it supplemental to source media.
-7. Run an editorial pass:
+7. For TikTok, verify current hashtag signals when accessible, keep only relevant tags, and enforce a maximum of five. If trend data is unavailable, use relevance-first topic tags and do not claim that they are trending.
+8. Run an editorial pass:
    - remove generic AI phrases and fake enthusiasm
    - vary sentence length
    - distinguish facts, inference, and opinion
    - preserve uncertainty
    - ensure the piece adds a new angle
-8. Save deliverables under `data/results/<content-id>/` when working in the project.
-9. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
+9. Save deliverables under `data/results/<content-id>/` when working in the project.
+10. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
 
 ## Authentication
 

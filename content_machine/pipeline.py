@@ -138,6 +138,43 @@ class ContentMachine:
         except Exception:
             return False
 
+    @staticmethod
+    def select_hashtags(story: Story, platform: str = "tiktok") -> list[str]:
+        text = f"{story.title} {story.summary} {story.source} {story.kind}".lower()
+        topic_rules = [
+            (("gemini", "google ai"), "#GeminiAI"),
+            (("claude", "anthropic"), "#ClaudeAI"),
+            (("openai", "chatgpt", "codex"), "#OpenAI"),
+            (("agent", "agentic"), "#AIAgents"),
+            (("github", "open source", "repository"), "#OpenSourceAI"),
+            (("research", "paper", "arxiv", "benchmark"), "#AIResearch"),
+            (("multimodal", "image", "video", "vision"), "#MultimodalAI"),
+            (("code", "coding", "developer", "sdk", "programming"), "#AICoding"),
+        ]
+        raw_trends = story.metadata.get("trending_hashtags", [])
+        if isinstance(raw_trends, str):
+            raw_trends = re.split(r"[\s,]+", raw_trends)
+        raw_trends = [*raw_trends, *re.split(r"[\s,]+", os.getenv("TIKTOK_TRENDING_HASHTAGS", ""))]
+        text_tokens = {token for token in re.findall(r"[a-z0-9]+", text) if len(token) >= 3}
+        contextual = {"ai", "aitools", "techtok", "technology", "technews", "learnontiktok"}
+        selected: list[str] = []
+
+        def add(tag: str) -> None:
+            normalized = "#" + re.sub(r"[^A-Za-z0-9_]", "", tag.lstrip("#"))
+            if len(normalized) > 1 and normalized.lower() not in {item.lower() for item in selected}:
+                selected.append(normalized)
+
+        for trend in raw_trends:
+            core = re.sub(r"[^a-z0-9]", "", str(trend).lower())
+            if core and (core in contextual or any(token in core for token in text_tokens)):
+                add(str(trend))
+        for keywords, tag in topic_rules:
+            if any(keyword in text for keyword in keywords):
+                add(tag)
+        for fallback in ("#AI", "#AITools", "#TechTok", "#VNTechLab", "#AICommunity"):
+            add(fallback)
+        return selected[:5] if platform.lower() == "tiktok" else selected[:10]
+
     def download_asset(self, url: str, story_id: str, name: str | None = None) -> Path:
         data = request(url)
         ext = Path(urllib.parse.urlsplit(url).path).suffix[:6] or ".bin"
@@ -221,11 +258,17 @@ class ContentMachine:
             {"scene": 4, "duration": "25-38s", "visual": "Limitations", "voice": "Benchmarks, cost, and reliability outside the demo remain open questions."},
             {"scene": 5, "duration": "38-45s", "visual": "CTA", "voice": "Should we rebuild it and measure the real cost?"},
         ]
+        hashtags = self.select_hashtags(story, platform)
+        caption = (
+            f"{story.title}\n\nLook beyond the demo: save this for the verification notes and build breakdown."
+            f"\n\nSource: {story.source} - {story.url}\n\n{' '.join(hashtags)}"
+        )
         package = {
             "id": story.id, "platform": platform, "format": fmt, "tone": tone,
             "title": story.title, "hooks": hooks, "script": script,
-            "caption": f"{story.title}\n\nLook beyond the demo: save this for the verification notes and build breakdown.\n\nSource: {story.source} - {story.url}",
-            "hashtags": ["#AI", "#AITools", "#TechTok", "#LapTrinh", "#VNTechLab"],
+            "caption": caption,
+            "hashtags": hashtags,
+            "hashtag_policy": {"limit": 5 if platform.lower() == "tiktok" else 10, "strategy": "current-trend-signal-plus-topic-relevance"},
             "claims": developed["claims"], "citations": developed["citations"],
             "assets": assets,
             "asset_policy": "source-required",

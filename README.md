@@ -19,6 +19,8 @@ python -m pip install -e .
 
 Production enforces a source-required asset policy. Every package must include at least one image or video from the original or user-approved source, stored with provenance and attribution; otherwise `produce` stops with an error. SVG and locally generated placeholders are rejected. If an additional illustration is explicitly requested in chat, the agent must use the installed ImageGen skill, save a PNG/JPG named `imagegen-<name>`, and keep it supplemental to the mandatory source media.
 
+TikTok packages contain at most five hashtags. Current trend signals are accepted through story metadata or `TIKTOK_TRENDING_HASHTAGS`, filtered for topic relevance, and combined with specific technology and channel tags.
+
 Or start a friendly terminal session:
 
 ```powershell

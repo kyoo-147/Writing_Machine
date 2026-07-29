@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -173,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
                 story = db.get_story(args.story_id)
                 profiles = json.loads(Path("config/voice-profiles.json").read_text(encoding="utf-8"))
                 generated = LLMWriter().generate(story, profiles[args.voice], args.platform, args.language)
+                generated["hashtags"] = machine.select_hashtags(story, args.platform)
+                generated["caption"] = re.sub(
+                    r"(?<!\w)#[A-Za-z0-9_]+", "", generated.get("caption", "")
+                ).strip()
+                generated["caption"] += "\n\n" + " ".join(generated["hashtags"])
                 target = Path(package["path"], "llm-package.json")
                 target.write_text(json.dumps(generated, ensure_ascii=False, indent=2), encoding="utf-8")
                 package["llm_package"] = str(target)

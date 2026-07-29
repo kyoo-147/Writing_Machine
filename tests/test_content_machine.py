@@ -25,7 +25,11 @@ class ContentMachineTests(unittest.TestCase):
         self.assertEqual(len(deduplicate([a, b])), 1)
 
     def test_develop_produce_archive_gate(self):
-        story = Story("A useful AI agent release", "https://github.com/example/agent", "GitHub", "The project released an open source SDK.", kind="release")
+        story = Story(
+            "A useful AI agent release", "https://github.com/example/agent", "GitHub",
+            "The project released an open source SDK.", kind="release",
+            metadata={"trending_hashtags": ["#AgenticAI", "#DanceChallenge"]},
+        )
         score_story(story)
         self.db.save_story(story)
         source_dir = self.machine.root / "assets" / story.id
@@ -43,6 +47,11 @@ class ContentMachineTests(unittest.TestCase):
         self.assertEqual(package["asset_policy"], "source-required")
         self.assertEqual({asset["origin"] for asset in package["assets"]}, {"source", "imagegen"})
         self.assertIn("Source: GitHub", package["caption"])
+        self.assertEqual(len(package["hashtags"]), 5)
+        self.assertEqual(len({tag.lower() for tag in package["hashtags"]}), 5)
+        self.assertIn("#AgenticAI", package["hashtags"])
+        self.assertNotIn("#DanceChallenge", package["hashtags"])
+        self.assertTrue(all(tag in package["caption"] for tag in package["hashtags"]))
         self.assertFalse(Path(package["path"], "cover.png").exists())
         self.assertFalse(Path(package["path"], "preview.mp4").exists())
         for filename in (
