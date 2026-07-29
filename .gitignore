@@ -1,0 +1,9 @@
+data/browser-profiles/
+data/auth/
+data/**/*.state.json
+data/**/*.cookies.json
+data/**/*.har
+.env
+.env.*
+node_modules/
+vendor/

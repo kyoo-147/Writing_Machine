@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Content Machine"
+  short_description: "Research and produce verified AI social content"
+  default_prompt: "Use $ai-content-machine to find, verify, and package today's best AI content ideas."
