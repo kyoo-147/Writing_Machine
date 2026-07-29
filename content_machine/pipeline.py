@@ -16,6 +16,36 @@ from .connectors import DEFAULT_RSS, collect_apify, collect_arxiv, collect_firec
 from .core import Database, Story, deduplicate, fingerprint, qa_canary, score_story, slugify, utcnow
 
 
+def publish_receipt(response: dict[str, Any]) -> tuple[str, str]:
+    status = str(response.get("status") or "").lower()
+    if response.get("success") is False or status in {"error", "failed", "rejected"}:
+        raise RuntimeError("Publisher reported a failed response.")
+    containers = [response]
+    if isinstance(response.get("data"), dict):
+        containers.append(response["data"])
+    external_id = next(
+        (
+            str(container[key]).strip()
+            for container in containers
+            for key in ("id", "post_id", "publish_id", "external_id")
+            if container.get(key) is not None and str(container[key]).strip()
+        ),
+        "",
+    )
+    public_url = next(
+        (
+            str(container[key]).strip()
+            for container in containers
+            for key in ("url", "post_url", "public_url", "permalink")
+            if str(container.get(key) or "").startswith(("https://", "http://"))
+        ),
+        "",
+    )
+    if not external_id and not public_url:
+        raise RuntimeError("Publisher response must include a post ID or public URL before archiving.")
+    return external_id or public_url, public_url
+
+
 class ContentMachine:
     def __init__(self, db: Database | None = None, root: Path | None = None):
         self.db = db or Database()
@@ -81,7 +111,11 @@ class ContentMachine:
         claims = self._claims(text)
         sources = self._citation_urls(story)
         evidence_rows = self.db.execute("SELECT payload FROM stories ORDER BY score DESC LIMIT 100").fetchall()
-        evidence = [Story(**json.loads(row[0])) for row in evidence_rows]
+        all_evidence = [Story(**json.loads(row[0])) for row in evidence_rows]
+        evidence = [
+            item for item in all_evidence
+            if item.id != story.id and item.url != story.url
+        ]
         checker = ClaimChecker()
         self.db.execute("DELETE FROM claims WHERE story_id=?", (story.id,))
         ledger = []
@@ -91,16 +125,24 @@ class ContentMachine:
             evidence_text = checked.get("evidence_excerpt", "")
             ledger.append({"claim": claim, "verdict": verdict, "entailment": checked["entailment"],
                            "evidence": evidence_text or "A second primary source is required before asserting this claim.",
-                           "source_url": checked["evidence_url"]})
+                           "source_url": checked["evidence_url"],
+                           "verification_basis": "independent-source" if checked["evidence_url"] else "no-independent-source"})
             self.db.execute(
                 "INSERT INTO claims(story_id,claim,verdict,evidence,source_url,checked_at) VALUES(?,?,?,?,?,?)",
                 (story.id, claim, verdict, evidence_text, checked["evidence_url"], utcnow()),
             )
+        citations = []
+        for url in sources:
+            source = next((item for item in all_evidence if item.url == url), story)
+            semantic = checker.validate_citation(claims[0], source)
+            independent = source.id != story.id and source.url != story.url
+            semantic["independent"] = independent
+            if not independent and semantic["verdict"] == "verified":
+                semantic["verdict"] = "source-supported"
+            citations.append({"url": url, "valid": self.validate_citation(url), "semantic": semantic})
         result = {
             "story": asdict(story), "claims": ledger,
-            "citations": [{"url": u, "valid": self.validate_citation(u),
-                           "semantic": checker.validate_citation(claims[0], next(
-                               (item for item in evidence if item.url == u), story))} for u in sources],
+            "citations": citations,
             "angles": [
                 {"type": "news", "hook": f"{story.title}: what is actually new?"},
                 {"type": "technical", "hook": "If we rebuild this demo, where is the hard engineering work?"},
@@ -431,13 +473,21 @@ class ContentMachine:
         if not endpoint:
             raise RuntimeError(f"No {platform} publisher configured. Set {platform.upper()}_PUBLISH_WEBHOOK.")
         response = json.loads(request(endpoint, headers={"Content-Type": "application/json"}, data=package))
-        external_id = str(response.get("id") or response.get("post_id") or "")
+        if not isinstance(response, dict):
+            raise RuntimeError("Publisher response must be a JSON object with a post ID or public URL.")
+        external_id, public_url = publish_receipt(response)
         self.db.execute(
             "INSERT INTO archive(fingerprint,story_id,platform,published_at,external_id,payload) VALUES(?,?,?,?,?,?)",
             (fingerprint(story.title, story.url), story.id, platform, utcnow(), external_id, json.dumps(response)),
         )
         self.db.event("publish", story.id, {"platform": platform, "canary": qa_canary(self.db, "publish")})
-        return {"status": "published", "platform": platform, "external_id": external_id, "response": response}
+        return {
+            "status": "published",
+            "platform": platform,
+            "external_id": external_id,
+            "public_url": public_url,
+            "response": response,
+        }
 
     def analytics(self) -> dict[str, Any]:
         def scalar(sql: str) -> int:

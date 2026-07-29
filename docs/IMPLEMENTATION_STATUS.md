@@ -5,25 +5,25 @@
 | Feature | Implementation |
 |---|---|
 | Discover | Multi-source collection, normalization, deduplication, archive exclusion and weighted trend ranking |
-| Develop | Multi-source claim ledger, numeric/negation contradiction checks, lexical entailment and live URL validation |
+| Develop | Independent-source claim ledger, numeric/negation contradiction checks, lexical entailment and live URL validation; the selected source alone is labeled source-supported |
 | Produce | Structured writing with configurable voice profiles, mandatory attributed source media, and no placeholder generation |
 | RSS | Native RSS and Atom ingestion; configurable custom feeds |
 | Firecrawl | REST connector using `FIRECRAWL_API_KEY` |
 | Apify | Synchronous Actor connector using `APIFY_TOKEN` |
-| GitHub | Search and repository release collectors |
+| GitHub | Repository search with creation/activity metadata, plus distinct release collectors |
 | arXiv | Native Atom API collector |
 | Persistence | SQLite by default; PostgreSQL through the optional psycopg adapter |
 | Archive | Published-content fingerprint archive prevents duplicate discovery |
 | Scheduler | Persistent one-time and interval command scheduler |
 | Dashboard | Local responsive dashboard and JSON analytics endpoints |
 | Analytics | Workflow counts, metric snapshots, velocity calculation and native platform analytics adapters |
-| Publishing | Generic webhook plus X, Meta and TikTok native adapters; dry-run default and explicit human approval |
+| Publishing | Generic webhook plus X, Meta and TikTok native adapters; dry-run default, explicit human approval, and receipt validation before webhook archival |
 | Skill | Chat-first routing contract for Codex and compatible agents |
 | QA canaries | Configurable per-phase internal checkpoints, excluded from public outputs |
 | Operations | Persistent retry queue, worker, health endpoint, event monitoring and failure counts |
 | Collaboration | Workspace RBAC and editorial review decisions |
 | Object storage | Local object store and optional S3-compatible backend |
-| OAuth | Authorization URL and code exchange for X, Meta and TikTok with OS-keyring token storage |
+| OAuth | Authorization URL and code exchange for X, Meta and TikTok with OS-keyring token storage and runtime fallback |
 | Visual illustrations | Optional PNG/JPG illustrations through the agent's ImageGen skill only; SVG and direct project-side image generation are prohibited |
 
 ## Adapter boundaries

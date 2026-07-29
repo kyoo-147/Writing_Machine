@@ -189,41 +189,47 @@ class PlatformPublisher:
         self.platform = platform.lower()
 
     def publish(self, package: dict[str, Any]) -> dict[str, Any]:
+        token = OAuthManager.access_token(self.platform)
         if self.platform == "x":
-            token, endpoint = os.getenv("X_ACCESS_TOKEN"), "https://api.x.com/2/tweets"
+            endpoint = "https://api.x.com/2/tweets"
             payload, headers = {"text": package["caption"][:280]}, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         elif self.platform == "facebook":
-            token, page = os.getenv("META_ACCESS_TOKEN"), os.getenv("META_PAGE_ID")
+            page = os.getenv("META_PAGE_ID")
             endpoint, payload = f"https://graph.facebook.com/v23.0/{page}/feed", {"message": package["caption"], "access_token": token}
             headers = {"Content-Type": "application/json"}
         elif self.platform == "tiktok":
-            token, endpoint = os.getenv("TIKTOK_ACCESS_TOKEN"), "https://open.tiktokapis.com/v2/post/publish/content/init/"
+            endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
             payload, headers = package["tiktok_payload"], {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=UTF-8"}
         else:
             raise ValueError(f"Unsupported platform: {self.platform}")
-        if not token:
-            raise RuntimeError(f"{self.platform.upper()} credentials are not configured")
         return json.loads(request(endpoint, headers=headers, data=payload))
 
 
 class PlatformAnalytics:
     def fetch(self, platform: str, external_id: str) -> dict[str, Any]:
         platform = platform.lower()
+        token = OAuthManager.access_token(platform)
         if platform == "x":
             url = f"https://api.x.com/2/tweets/{external_id}?tweet.fields=public_metrics,non_public_metrics,organic_metrics"
-            return json.loads(request(url, headers={"Authorization": f"Bearer {os.getenv('X_ACCESS_TOKEN')}"}))
+            return json.loads(request(url, headers={"Authorization": f"Bearer {token}"}))
         if platform == "facebook":
-            token = urllib.parse.quote(os.getenv("META_ACCESS_TOKEN", ""))
-            url = f"https://graph.facebook.com/v23.0/{external_id}/insights?metric=post_impressions,post_engaged_users&access_token={token}"
+            encoded_token = urllib.parse.quote(token)
+            url = f"https://graph.facebook.com/v23.0/{external_id}/insights?metric=post_impressions,post_engaged_users&access_token={encoded_token}"
             return json.loads(request(url))
         if platform == "tiktok":
             url = "https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count"
-            return json.loads(request(url, headers={"Authorization": f"Bearer {os.getenv('TIKTOK_ACCESS_TOKEN')}",
+            return json.loads(request(url, headers={"Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"}, data={"filters": {"video_ids": [external_id]}}))
         raise ValueError(platform)
 
 
 class OAuthManager:
+    TOKEN_ENV = {
+        "x": "X_ACCESS_TOKEN",
+        "facebook": "META_ACCESS_TOKEN",
+        "tiktok": "TIKTOK_ACCESS_TOKEN",
+    }
+
     CONFIG = {
         "x": {
             "authorize": "https://x.com/i/oauth2/authorize",
@@ -277,6 +283,31 @@ class OAuthManager:
             token = json.loads(response.read())
         self._store_token(platform, token)
         return {"stored": True, "platform": platform, "expires_in": token.get("expires_in")}
+
+    @classmethod
+    def access_token(cls, platform: str, required: bool = True) -> str | None:
+        platform = platform.lower()
+        if platform not in cls.TOKEN_ENV:
+            raise ValueError(f"Unsupported platform: {platform}")
+        environment_token = os.getenv(cls.TOKEN_ENV[platform])
+        if environment_token:
+            return environment_token
+        try:
+            import keyring  # type: ignore
+
+            stored = keyring.get_password("content-machine", platform)
+            token = json.loads(stored).get("access_token") if stored else None
+        except (ImportError, json.JSONDecodeError, AttributeError):
+            token = None
+        except Exception:
+            token = None
+        if token:
+            return str(token)
+        if required:
+            raise RuntimeError(
+                f"{platform.upper()} credentials are not configured in the environment or OS keyring"
+            )
+        return None
 
     @staticmethod
     def _store_token(platform: str, token: dict[str, Any]) -> None:

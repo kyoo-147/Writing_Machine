@@ -63,8 +63,14 @@ def collect_github(query: str = "topic:artificial-intelligence", days: int = 7, 
     return [Story(
         title=f"{repo['full_name']}: {repo.get('description') or 'AI project'}",
         url=repo["html_url"], source="GitHub", summary=repo.get("description") or "",
-        published_at=repo.get("pushed_at", ""), kind="release",
-        metadata={"stars": repo.get("stargazers_count", 0), "engagement": repo.get("stargazers_count", 0)},
+        published_at=repo.get("created_at", ""), kind="repository",
+        metadata={
+            "stars": repo.get("stargazers_count", 0),
+            "engagement": repo.get("stargazers_count", 0),
+            "created_at": repo.get("created_at", ""),
+            "updated_at": repo.get("updated_at", ""),
+            "pushed_at": repo.get("pushed_at", ""),
+        },
     ) for repo in payload.get("items", [])]
 
 
