@@ -32,6 +32,10 @@ class ContentMachineTests(unittest.TestCase):
         source_dir.mkdir(parents=True)
         (source_dir / "source-image.jpg").write_bytes(b"source-media")
         (source_dir / "imagegen-architecture.png").write_bytes(b"generated-illustration")
+        result_dir = self.machine.root / "results" / f"{story.id}-a-useful-ai-agent-release"
+        result_dir.mkdir(parents=True)
+        (result_dir / "cover.png").write_bytes(b"legacy-placeholder")
+        (result_dir / "preview.mp4").write_bytes(b"legacy-placeholder")
         developed = self.machine.develop(story.id)
         self.assertTrue(developed["claims"])
         package = self.machine.produce(story.id)
@@ -40,6 +44,13 @@ class ContentMachineTests(unittest.TestCase):
         self.assertEqual({asset["origin"] for asset in package["assets"]}, {"source", "imagegen"})
         self.assertIn("Source: GitHub", package["caption"])
         self.assertFalse(Path(package["path"], "cover.png").exists())
+        self.assertFalse(Path(package["path"], "preview.mp4").exists())
+        for filename in (
+            "brief.json", "title-and-hooks.md", "script.md", "caption.md", "sources.md",
+            "fact-check.md", "asset-manifest.json", "upload-checklist.md",
+        ):
+            self.assertTrue(Path(package["path"], filename).exists(), filename)
+        self.assertEqual(len(list(Path(package["path"], "assets").iterdir())), 2)
         self.assertEqual(self.machine.publish(story.id, "tiktok")["status"], "dry-run")
         public = Path(package["path"], "caption.txt").read_text(encoding="utf-8")
         self.assertNotIn("DISCOVERY_SOURCE_CHECKED", public)

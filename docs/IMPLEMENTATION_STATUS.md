@@ -48,3 +48,5 @@ Direct TikTok, Meta and X adapters require approved developer applications, scop
 - Every package requires source image/video media; ImageGen illustrations cannot replace it.
 - SVG assets and locally generated placeholder covers/videos are rejected.
 - Publishing cannot occur without `--approve`.
+
+The tested manual workflow and current conversational boundaries are recorded in [FLOW_ACCEPTANCE.md](FLOW_ACCEPTANCE.md).

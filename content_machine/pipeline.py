@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import shutil
 import urllib.parse
 import urllib.error
 from dataclasses import asdict
@@ -153,6 +154,10 @@ class ContentMachine:
         developed = self.develop(story_id)
         package_dir = self.root / "results" / f"{story.id}-{slugify(story.title)}"
         package_dir.mkdir(parents=True, exist_ok=True)
+        for legacy_name in ("cover.png", "preview.mp4"):
+            legacy_path = package_dir / legacy_name
+            if legacy_path.exists():
+                legacy_path.unlink()
         assets: list[dict[str, Any]] = []
         source_asset_dir = self.root / "assets" / story.id
         source_asset_dir.mkdir(parents=True, exist_ok=True)
@@ -190,6 +195,20 @@ class ContentMachine:
                 "Source media is required. Download at least one image or video from the original source before production. "
                 "ImageGen illustrations cannot replace source media, and SVG assets are not accepted."
             )
+        package_assets = package_dir / "assets"
+        if package_assets.exists():
+            resolved_assets = package_assets.resolve()
+            resolved_results = (self.root / "results").resolve()
+            if resolved_results not in resolved_assets.parents:
+                raise RuntimeError(f"Refusing to replace assets outside the managed results directory: {resolved_assets}")
+            shutil.rmtree(package_assets)
+        package_assets.mkdir()
+        for asset in assets:
+            source_path = Path(asset["path"])
+            packaged_path = package_assets / source_path.name
+            shutil.copy2(source_path, packaged_path)
+            asset["source_path"] = str(source_path)
+            asset["path"] = str(packaged_path)
         hooks = [
             f"{story.title}: it sounds impressive, but do not trust the demo yet.",
             "This AI just appeared. The question is not what it can do, but what the demo leaves out.",
@@ -217,9 +236,37 @@ class ContentMachine:
         for name, value in [("package.json", package), ("sources.json", developed["citations"]), ("claims.json", developed["claims"])]:
             (package_dir / name).write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
         (package_dir / "caption.txt").write_text(package["caption"], encoding="utf-8")
+        (package_dir / "caption.md").write_text(package["caption"] + "\n", encoding="utf-8")
+        (package_dir / "brief.json").write_text(json.dumps(developed, ensure_ascii=False, indent=2), encoding="utf-8")
+        (package_dir / "title-and-hooks.md").write_text(
+            f"# {story.title}\n\n" + "\n".join(f"{index}. {hook}" for index, hook in enumerate(hooks, 1)) + "\n",
+            encoding="utf-8",
+        )
         (package_dir / "script.md").write_text("\n".join(
             f"## Scene {s['scene']} ({s['duration']})\n\nVisual: {s['visual']}\n\nVoice: {s['voice']}\n" for s in script
         ), encoding="utf-8")
+        (package_dir / "sources.md").write_text(
+            "# Sources\n\n" + "\n".join(
+                f"- [{citation['url']}]({citation['url']}) - {'valid' if citation['valid'] else 'unreachable'}"
+                for citation in developed["citations"]
+            ) + "\n",
+            encoding="utf-8",
+        )
+        (package_dir / "fact-check.md").write_text(
+            "# Fact check\n\n" + "\n".join(
+                f"- **{claim['verdict']}**: {claim['claim']}\n  - Evidence: {claim['evidence']}\n"
+                f"  - Source: {claim['source_url'] or 'Additional source required'}"
+                for claim in developed["claims"]
+            ) + "\n",
+            encoding="utf-8",
+        )
+        (package_dir / "asset-manifest.json").write_text(
+            json.dumps(assets, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (package_dir / "upload-checklist.md").write_text(
+            "# Upload checklist\n\n" + "\n".join(f"- [ ] {item}" for item in package["checklist"]) + "\n",
+            encoding="utf-8",
+        )
         self.db.execute(
             "INSERT INTO packages(story_id,package_path,platform,status,payload,created_at) VALUES(?,?,?,?,?,?)",
             (story.id, str(package_dir), platform, "ready", json.dumps(package, ensure_ascii=False), utcnow()),
