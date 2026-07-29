@@ -1,4 +1,4 @@
-# VN Tech Lab Content Machine — Enterprise Product Plan
+# VN Tech Lab Content Machine - Enterprise Product Plan
 
 ## 1. Product objective
 
@@ -187,20 +187,20 @@ Every derived item must point to its input documents, model/tool version, prompt
 
 ```text
 requested
-→ collecting
-→ clustered
-→ verifying
-→ shortlisted
-→ selected
-→ developing
-→ awaiting_angle_approval
-→ producing
-→ editorial_review
-→ awaiting_publish_approval
-→ scheduled
-→ published
-→ measuring
-→ archived
+-> collecting
+-> clustered
+-> verifying
+-> shortlisted
+-> selected
+-> developing
+-> awaiting_angle_approval
+-> producing
+-> editorial_review
+-> awaiting_publish_approval
+-> scheduled
+-> published
+-> measuring
+-> archived
 ```
 
 Failed states must preserve partial artifacts and support retry from the last safe checkpoint.
@@ -311,22 +311,22 @@ Use durable queues, idempotent workers, exponential backoff, dead-letter queues,
 
 ## 17. Roadmap
 
-### Phase 0 — Current foundation
+### Phase 0 - Foundation (complete)
 
 - Vendor and pin selected projects.
 - Deliver `ai-content-machine` skill.
-- Deliver PowerShell CLI for jobs and browser login.
+- Deliver Python CLI, PowerShell entry point and browser login routing.
 - Define schemas, routing, voice, and product plan.
 
-### Phase 1 — Local MVP
+### Phase 1 - Local MVP (complete)
 
 - Implement discovery jobs and result folders.
 - Add RSS and GitHub connectors.
 - Add claim ledger and asset manifest.
-- Validate BrowserOS, agent-browser, and OpenTabs on X/Facebook test accounts.
-- Add three representative content packages.
+- Install and validate agent-browser and OpenTabs CLI adapters.
+- Generate representative content packages from live discovery data.
 
-### Phase 2 — Creator workstation
+### Phase 2 - Creator workstation (complete)
 
 - Local web dashboard.
 - SQLite/Postgres.
@@ -335,15 +335,15 @@ Use durable queues, idempotent workers, exponential backoff, dead-letter queues,
 - Asset downloads and generation.
 - Manual approval workflow.
 
-### Phase 3 — Team product
+### Phase 3 - Team product (in progress)
 
 - Multi-user workspaces and RBAC.
 - Central source registry.
 - Review queues and comments.
-- Publishing drafts and scheduling.
-- Analytics ingestion.
+- Publishing drafts, scheduling and webhook delivery are available.
+- Workflow analytics are available; platform performance ingestion remains.
 
-### Phase 4 — Enterprise
+### Phase 4 - Enterprise
 
 - SSO/SCIM.
 - Policy engine and audit export.
@@ -351,7 +351,7 @@ Use durable queues, idempotent workers, exponential backoff, dead-letter queues,
 - Model governance and evaluation service.
 - Private deployment and managed browser bridge.
 
-### Phase 5 — Optimization
+### Phase 5 - Optimization
 
 - Performance-driven topic and hook recommendations.
 - Controlled editorial experiments.
@@ -360,14 +360,14 @@ Use durable queues, idempotent workers, exponential backoff, dead-letter queues,
 
 ## 18. Immediate engineering backlog
 
-1. Install and test one authenticated browser backend.
-2. Build source and content-item persistence.
-3. Implement `discover`, `develop`, and `produce` CLI lifecycle commands.
-4. Add RSS, GitHub release, arXiv, and official blog connectors.
-5. Implement claim ledger and citation validation.
-6. Add OpenTabs feasibility tests for X, Facebook, Reddit, and TikTok.
-7. Add isolated browser-profile management and secret redaction.
-8. Create a small Vietnamese editorial evaluation set.
-9. Produce three end-to-end sample posts.
-10. Decide the Phase 2 workflow engine after measuring local MVP complexity.
+1. Register approved TikTok, Meta and X developer applications.
+2. Add platform-specific OAuth callbacks and publishing adapters.
+3. Test OpenTabs on dedicated X, Facebook, Reddit and TikTok research accounts.
+4. Add multi-user workspaces, RBAC and review comments.
+5. Add object storage and platform analytics ingestion.
+6. Add editorial evaluation sets for each supported locale.
+7. Add model-provider adapters for structured content generation.
+8. Add SSO, policy packs, audit export and managed secret storage.
+9. Add load, recovery and connector-contract test suites.
+10. Deploy a staging environment and run an approval-gated publishing pilot.
 

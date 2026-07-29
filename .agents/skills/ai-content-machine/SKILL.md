@@ -17,14 +17,19 @@ Operate as the conversational coordinator for the VN Tech Lab content pipeline. 
 3. Default to three topics, Vietnamese, mixed technical audience, and manual publishing.
 4. Never publish automatically unless the user explicitly enables a later publishing phase.
 
-Run the CLI helper when useful:
+Use the real CLI for every phase so results are persisted, deduplicated, auditable, and reusable:
 
 ```powershell
 .\cm.ps1 doctor
-.\cm.ps1 new -Query "AI news today" -Count 3 -Format auto -Tone skeptical
-.\cm.ps1 prompt
-.\cm.ps1 auth -Platform x
+.\cm.ps1 discover "AI news today" --count 3
+.\cm.ps1 develop <story-id>
+.\cm.ps1 produce <story-id> --platform tiktok --format carousel --tone skeptical
+.\cm.ps1 dashboard
 ```
+
+For a conversational terminal, run `.\cm.ps1 chat`. Infer discover, develop, and produce intents from the user's language; keep project files in English and answer in the user's language.
+
+At the end of each phase, confirm its QA canary exists in the database event log. Canary text is internal only and must never appear in public scripts, captions, assets, or posts.
 
 ## Route tools
 
@@ -54,7 +59,8 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
    - discussion or controversy: 10%
    - Vietnamese audience fit: 5%
 5. Return a compact shortlist with title, why it matters, source links, visual availability, format fit, and score.
-6. Stop for selection unless the user asked for autonomous production.
+6. The command persists results in SQLite/PostgreSQL and excludes archived stories.
+7. Stop for selection unless the user asked for autonomous production.
 
 ## Develop
 
@@ -67,7 +73,8 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
    - technical/build
    - skeptical/contrarian
 6. Recommend one angle and explain the tradeoff in one sentence.
-7. Obtain user approval before expensive asset generation or video downloading.
+7. Run citation validation and preserve `unverified` claims as uncertainty.
+8. Obtain user approval before expensive asset generation or video downloading.
 
 ## Produce
 
@@ -95,6 +102,7 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
    - preserve uncertainty
    - ensure the piece adds a new angle
 6. Save deliverables under `data/results/<content-id>/` when working in the project.
+7. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
 
 ## Authentication
 

@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: content_machine
+      POSTGRES_USER: content_machine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U content_machine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dashboard:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      CONTENT_MACHINE_DATABASE_URL: postgresql://content_machine:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/content_machine
+      CONTENT_MACHINE_DATA_DIR: /app/data
+    volumes:
+      - content-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  content-data:
