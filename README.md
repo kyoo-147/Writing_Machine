@@ -17,6 +17,8 @@ python -m pip install -e .
 .\cm.ps1 dashboard
 ```
 
+Production uses a source-first asset policy. Official article images, original demos and author-provided media are preferred and stored with provenance and attribution. Generated covers and placeholder videos are disabled by default; set `GENERATE_FALLBACK_ASSETS=1` only when generation is explicitly wanted.
+
 Or start a friendly terminal session:
 
 ```powershell

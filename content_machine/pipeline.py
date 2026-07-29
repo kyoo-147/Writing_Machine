@@ -191,7 +191,35 @@ class ContentMachine:
         developed = self.develop(story_id)
         package_dir = self.root / "results" / f"{story.id}-{slugify(story.title)}"
         package_dir.mkdir(parents=True, exist_ok=True)
-        card = self.generate_card(story, package_dir / "cover.png")
+        assets: list[dict[str, Any]] = []
+        source_asset_dir = self.root / "assets" / story.id
+        source_asset_dir.mkdir(parents=True, exist_ok=True)
+        image_url = story.metadata.get("image")
+        existing_images = [
+            path for path in source_asset_dir.iterdir()
+            if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+        ]
+        if image_url and not existing_images:
+            suffix = Path(urllib.parse.urlsplit(image_url).path).suffix or ".jpg"
+            try:
+                (source_asset_dir / f"source-image{suffix}").write_bytes(request(image_url))
+            except Exception as exc:
+                self.db.event("source_asset_download_failed", story.id, {"url": image_url, "error": str(exc)})
+        source_files = [
+            path for path in source_asset_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mov", ".webm"}
+        ]
+        for path in source_files:
+            media_type = "video" if path.suffix.lower() in {".mp4", ".mov", ".webm"} else "image"
+            assets.append({
+                "path": str(path), "type": media_type, "origin": "source",
+                "source_url": story.url, "attribution": story.source,
+                "rights": "source-owned; review reuse rights and provide attribution",
+            })
+        generated_card = None
+        if not assets and os.getenv("GENERATE_FALLBACK_ASSETS", "0") == "1":
+            generated_card = self.generate_card(story, package_dir / "cover.png")
+            assets.append({"path": str(generated_card), "type": "cover", "origin": "generated", "rights": "project-owned"})
         hooks = [
             f"{story.title}: it sounds impressive, but do not trust the demo yet.",
             "This AI just appeared. The question is not what it can do, but what the demo leaves out.",
@@ -210,15 +238,16 @@ class ContentMachine:
             "caption": f"{story.title}\n\nLook beyond the demo: save this for the verification notes and build breakdown.\n\nPrimary source: {story.url}",
             "hashtags": ["#AI", "#AITools", "#TechTok", "#LapTrinh", "#VNTechLab"],
             "claims": developed["claims"], "citations": developed["citations"],
-            "assets": [{"path": str(card), "type": "cover", "origin": "generated", "rights": "project-owned"}],
-            "checklist": ["Review unverified claims", "Review the 9:16 cover", "Listen to the voice-over", "Validate source links", "Obtain human approval before publishing"],
+            "assets": assets,
+            "asset_policy": "source-first",
+            "checklist": ["Review unverified claims", "Review source attribution and reuse rights", "Validate source links", "Obtain human approval before publishing"],
             "qa_internal": qa_canary(self.db, "produce"),
             "created_at": utcnow(),
         }
-        if fmt in {"video", "short-video"}:
+        if fmt in {"video", "short-video"} and generated_card and os.getenv("GENERATE_FALLBACK_ASSETS", "0") == "1":
             video = package_dir / "preview.mp4"
             try:
-                generated = self.generate_video(card, video)
+                generated = self.generate_video(generated_card, video)
                 if generated:
                     package["assets"].append({"path": str(generated), "type": "video", "origin": "generated", "rights": "project-owned"})
             except subprocess.CalledProcessError as exc:
