@@ -17,7 +17,7 @@ python -m pip install -e .
 .\cm.ps1 dashboard
 ```
 
-Production uses a source-first asset policy. Official article images, original demos and author-provided media are preferred and stored with provenance and attribution. Generated covers and placeholder videos are disabled by default; set `GENERATE_FALLBACK_ASSETS=1` only when generation is explicitly wanted.
+Production enforces a source-required asset policy. Every package must include at least one image or video from the original or user-approved source, stored with provenance and attribution; otherwise `produce` stops with an error. SVG and locally generated placeholders are rejected. If an additional illustration is explicitly requested in chat, the agent must use the installed ImageGen skill, save a PNG/JPG named `imagegen-<name>`, and keep it supplemental to the mandatory source media.
 
 Or start a friendly terminal session:
 

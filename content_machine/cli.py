@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .core import Database
 from .dashboard import serve
-from .enterprise import AccessControl, JobQueue, LLMWriter, MediaGenerator, OAuthManager, PlatformAnalytics, PlatformPublisher
+from .enterprise import AccessControl, JobQueue, LLMWriter, OAuthManager, PlatformAnalytics, PlatformPublisher
 from .pipeline import ContentMachine
 
 
@@ -64,8 +64,6 @@ def build_parser() -> argparse.ArgumentParser:
     oauth.add_argument("action", choices=["url", "exchange"]); oauth.add_argument("platform", choices=["x", "facebook", "tiktok"])
     oauth.add_argument("--state", default="content-machine"); oauth.add_argument("--code-challenge", default="")
     oauth.add_argument("--code-verifier", default="")
-    media = sub.add_parser("generate-media", help="Generate model-backed image or video assets")
-    media.add_argument("story_id"); media.add_argument("kind", choices=["image", "video"]); media.add_argument("--prompt")
     sub.add_parser("analytics")
     dash = sub.add_parser("dashboard"); dash.add_argument("--host", default="127.0.0.1"); dash.add_argument("--port", type=int, default=8787)
     sched = sub.add_parser("schedule"); sched.add_argument("action", choices=["add", "list", "run"])
@@ -240,15 +238,6 @@ def main(argv: list[str] | None = None) -> int:
                 import getpass
                 code = os.getenv("OAUTH_CODE") or getpass.getpass("Authorization code: ")
                 emit(manager.exchange(args.platform, code, args.code_verifier))
-        elif args.command == "generate-media":
-            story = db.get_story(args.story_id)
-            if not story:
-                raise KeyError(args.story_id)
-            prompt = args.prompt or f"Editorial technology visual, no logos, illustrating: {story.title}"
-            target = Path("data/assets", story.id, "generated.png" if args.kind == "image" else "generated.mp4")
-            generator = MediaGenerator()
-            result = generator.generate_image(prompt, target) if args.kind == "image" else generator.generate_video(prompt, target)
-            emit({"path": str(result), "kind": args.kind})
         elif args.command == "analytics": emit(machine.analytics())
         elif args.command == "schedule": emit(scheduler(db, args.action, args.job_command, args.run_at, args.every))
         elif args.command == "chat": chat(machine)

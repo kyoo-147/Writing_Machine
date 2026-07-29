@@ -6,7 +6,7 @@
 |---|---|
 | Discover | Multi-source collection, normalization, deduplication, archive exclusion and weighted trend ranking |
 | Develop | Multi-source claim ledger, numeric/negation contradiction checks, lexical entailment and live URL validation |
-| Produce | Template fallback plus OpenAI-compatible or Gemini structured generation with configurable voice profiles |
+| Produce | Structured writing with configurable voice profiles, mandatory attributed source media, and no placeholder generation |
 | RSS | Native RSS and Atom ingestion; configurable custom feeds |
 | Firecrawl | REST connector using `FIRECRAWL_API_KEY` |
 | Apify | Synchronous Actor connector using `APIFY_TOKEN` |
@@ -24,6 +24,7 @@
 | Collaboration | Workspace RBAC and editorial review decisions |
 | Object storage | Local object store and optional S3-compatible backend |
 | OAuth | Authorization URL and code exchange for X, Meta and TikTok with OS-keyring token storage |
+| Visual illustrations | Optional PNG/JPG illustrations through the agent's ImageGen skill only; SVG and direct project-side image generation are prohibited |
 
 ## Adapter boundaries
 
@@ -44,4 +45,6 @@ Direct TikTok, Meta and X adapters require approved developer applications, scop
 - Login and MFA are completed by a human in a dedicated browser profile.
 - CAPTCHA and access controls are never bypassed.
 - Asset origin and rights are recorded in each package.
+- Every package requires source image/video media; ImageGen illustrations cannot replace it.
+- SVG assets and locally generated placeholder covers/videos are rejected.
 - Publishing cannot occur without `--approve`.

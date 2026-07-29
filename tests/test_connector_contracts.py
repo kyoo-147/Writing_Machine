@@ -1,12 +1,10 @@
 import json
 import os
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from content_machine.connectors import collect_apify, collect_firecrawl, collect_web
-from content_machine.enterprise import MediaGenerator, PlatformAnalytics
+from content_machine.enterprise import PlatformAnalytics
 
 
 class ConnectorContractTests(unittest.TestCase):
@@ -39,17 +37,8 @@ class ConnectorContractTests(unittest.TestCase):
         self.assertNotIn("ignore_this", story.summary)
 
     @patch("content_machine.enterprise.request")
-    def test_video_and_analytics_contracts(self, mocked_request):
-        mocked_request.side_effect = [
-            b'{"url":"https://media.test/video.mp4"}',
-            b"video-bytes",
-            b'{"data":{"public_metrics":{"like_count":12}}}',
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory, "video.mp4")
-            with patch.dict(os.environ, {"VIDEO_GENERATION_WEBHOOK": "https://provider.test/generate"}):
-                MediaGenerator().generate_video("AI animation", target)
-            self.assertEqual(target.read_bytes(), b"video-bytes")
+    def test_analytics_contract(self, mocked_request):
+        mocked_request.return_value = b'{"data":{"public_metrics":{"like_count":12}}}'
         with patch.dict(os.environ, {"X_ACCESS_TOKEN": "test"}):
             result = PlatformAnalytics().fetch("x", "123")
         self.assertEqual(result["data"]["public_metrics"]["like_count"], 12)

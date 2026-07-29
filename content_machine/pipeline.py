@@ -5,9 +5,6 @@ import json
 import math
 import os
 import re
-import shutil
-import subprocess
-import textwrap
 import urllib.parse
 import urllib.error
 from dataclasses import asdict
@@ -149,41 +146,6 @@ class ContentMachine:
         self.db.event("asset_downloaded", story_id, {"url": url, "path": str(target), "bytes": len(data)})
         return target
 
-    def generate_card(self, story: Story, target: Path) -> Path:
-        from PIL import Image, ImageDraw, ImageFont
-
-        target.parent.mkdir(parents=True, exist_ok=True)
-        image = Image.new("RGB", (1080, 1920), "#090b12")
-        draw = ImageDraw.Draw(image)
-        for y in range(1920):
-            ratio = y / 1919
-            draw.line((0, y, 1080, y), fill=(9 + int(18 * ratio), 11 + int(25 * ratio), 18 + int(65 * ratio)))
-        try:
-            brand_font = ImageFont.truetype("arial.ttf", 44)
-            title_font = ImageFont.truetype("arialbd.ttf", 78)
-            source_font = ImageFont.truetype("arial.ttf", 34)
-        except OSError:
-            brand_font = ImageFont.load_default(size=44)
-            title_font = ImageFont.load_default(size=78)
-            source_font = ImageFont.load_default(size=34)
-        draw.rounded_rectangle((52, 72, 1028, 1848), radius=36, outline="#293659", width=3)
-        draw.text((80, 130), "VN TECH LAB", fill="#76f7c8", font=brand_font)
-        draw.multiline_text((80, 390), "\n".join(textwrap.wrap(story.title, 21)), fill="white", font=title_font, spacing=22)
-        draw.text((80, 1760), f"Source: {story.source}", fill="#aab4d4", font=source_font)
-        image.save(target, quality=92)
-        return target
-
-    def generate_video(self, image: Path, target: Path, duration: int = 8) -> Path | None:
-        if not shutil.which("ffmpeg"):
-            return None
-        target.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", str(image), "-t", str(duration),
-            "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
-            "-r", "30", "-pix_fmt", "yuv420p", str(target),
-        ], check=True, capture_output=True)
-        return target
-
     def produce(self, story_id: str, platform: str = "tiktok", fmt: str = "carousel", tone: str = "skeptical") -> dict[str, Any]:
         story = self.db.get_story(story_id)
         if not story:
@@ -198,6 +160,7 @@ class ContentMachine:
         existing_images = [
             path for path in source_asset_dir.iterdir()
             if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+            and not path.name.lower().startswith(("imagegen-", "generated", "cover", "preview"))
         ]
         if image_url and not existing_images:
             suffix = Path(urllib.parse.urlsplit(image_url).path).suffix or ".jpg"
@@ -207,19 +170,26 @@ class ContentMachine:
                 self.db.event("source_asset_download_failed", story.id, {"url": image_url, "error": str(exc)})
         source_files = [
             path for path in source_asset_dir.iterdir()
-            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mov", ".webm"}
+            if path.is_file()
+            and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mov", ".webm"}
+            and not path.name.lower().startswith(("generated", "cover", "preview"))
+            and (not path.name.lower().startswith("imagegen-") or path.suffix.lower() in {".jpg", ".jpeg", ".png"})
         ]
         for path in source_files:
             media_type = "video" if path.suffix.lower() in {".mp4", ".mov", ".webm"} else "image"
+            is_imagegen = path.name.lower().startswith("imagegen-") and path.suffix.lower() in {".jpg", ".jpeg", ".png"}
             assets.append({
-                "path": str(path), "type": media_type, "origin": "source",
-                "source_url": story.url, "attribution": story.source,
-                "rights": "source-owned; review reuse rights and provide attribution",
+                "path": str(path), "type": media_type,
+                "origin": "imagegen" if is_imagegen else "source",
+                "source_url": None if is_imagegen else story.url,
+                "attribution": "ImageGen illustration" if is_imagegen else story.source,
+                "rights": "project-generated" if is_imagegen else "source-owned; review reuse rights and provide attribution",
             })
-        generated_card = None
-        if not assets and os.getenv("GENERATE_FALLBACK_ASSETS", "0") == "1":
-            generated_card = self.generate_card(story, package_dir / "cover.png")
-            assets.append({"path": str(generated_card), "type": "cover", "origin": "generated", "rights": "project-owned"})
+        if not any(asset["origin"] == "source" for asset in assets):
+            raise RuntimeError(
+                "Source media is required. Download at least one image or video from the original source before production. "
+                "ImageGen illustrations cannot replace source media, and SVG assets are not accepted."
+            )
         hooks = [
             f"{story.title}: it sounds impressive, but do not trust the demo yet.",
             "This AI just appeared. The question is not what it can do, but what the demo leaves out.",
@@ -235,23 +205,15 @@ class ContentMachine:
         package = {
             "id": story.id, "platform": platform, "format": fmt, "tone": tone,
             "title": story.title, "hooks": hooks, "script": script,
-            "caption": f"{story.title}\n\nLook beyond the demo: save this for the verification notes and build breakdown.\n\nPrimary source: {story.url}",
+            "caption": f"{story.title}\n\nLook beyond the demo: save this for the verification notes and build breakdown.\n\nSource: {story.source} - {story.url}",
             "hashtags": ["#AI", "#AITools", "#TechTok", "#LapTrinh", "#VNTechLab"],
             "claims": developed["claims"], "citations": developed["citations"],
             "assets": assets,
-            "asset_policy": "source-first",
+            "asset_policy": "source-required",
             "checklist": ["Review unverified claims", "Review source attribution and reuse rights", "Validate source links", "Obtain human approval before publishing"],
             "qa_internal": qa_canary(self.db, "produce"),
             "created_at": utcnow(),
         }
-        if fmt in {"video", "short-video"} and generated_card and os.getenv("GENERATE_FALLBACK_ASSETS", "0") == "1":
-            video = package_dir / "preview.mp4"
-            try:
-                generated = self.generate_video(generated_card, video)
-                if generated:
-                    package["assets"].append({"path": str(generated), "type": "video", "origin": "generated", "rights": "project-owned"})
-            except subprocess.CalledProcessError as exc:
-                self.db.event("media_generation_failed", story.id, {"error": exc.stderr.decode(errors="replace")[-1000:]})
         for name, value in [("package.json", package), ("sources.json", developed["citations"]), ("claims.json", developed["claims"])]:
             (package_dir / name).write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
         (package_dir / "caption.txt").write_text(package["caption"], encoding="utf-8")

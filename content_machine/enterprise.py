@@ -8,7 +8,6 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-import base64
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -286,28 +285,3 @@ class OAuthManager:
         except ImportError as exc:
             raise RuntimeError("Install secure OAuth storage with pip install '.[oauth]'") from exc
         keyring.set_password("content-machine", platform, json.dumps(token))
-
-
-class MediaGenerator:
-    def generate_image(self, prompt: str, target: Path, size: str = "1024x1536") -> Path:
-        key = os.getenv("OPENAI_API_KEY")
-        if not key:
-            raise RuntimeError("OPENAI_API_KEY is required for model image generation")
-        raw = json.loads(request(f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/images/generations",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            data={"model": os.getenv("IMAGE_MODEL", "gpt-image-1"), "prompt": prompt, "size": size, "response_format": "b64_json"}))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(base64.b64decode(raw["data"][0]["b64_json"]))
-        return target
-
-    def generate_video(self, prompt: str, target: Path) -> Path:
-        endpoint = os.getenv("VIDEO_GENERATION_WEBHOOK")
-        if not endpoint:
-            raise RuntimeError("VIDEO_GENERATION_WEBHOOK is required for model video generation")
-        raw = json.loads(request(endpoint, headers={"Content-Type": "application/json"}, data={"prompt": prompt}))
-        media_url = raw.get("url")
-        if not media_url:
-            raise RuntimeError("Video provider did not return a downloadable URL")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(request(media_url))
-        return target

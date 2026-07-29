@@ -16,7 +16,8 @@ Operate as the conversational coordinator for the VN Tech Lab content pipeline. 
 2. Ask only for missing information that materially changes the result.
 3. Default to three topics, Vietnamese, mixed technical audience, and manual publishing.
 4. Never publish automatically unless the user explicitly enables a later publishing phase.
-5. Default to source-first assets. Prefer official images, original demo media, repository screenshots, and author-provided visuals with attribution. Generate new media only when the user explicitly asks or no usable source asset exists and generation is approved.
+5. Source media is mandatory. Every production package must contain at least one image or video taken from the original source or another user-approved source, with provenance and attribution. Do not complete production without it.
+6. Never create SVG assets. If the user explicitly requests an original illustration or architecture diagram, invoke the installed ImageGen skill and save the result as PNG or JPG. ImageGen output is optional supporting media and never replaces the mandatory source media.
 
 Use the real CLI for every phase so results are persisted, deduplicated, auditable, and reusable:
 
@@ -80,7 +81,8 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
 6. Recommend one angle and explain the tradeoff in one sentence.
 7. Run citation validation and preserve `unverified` claims as uncertainty.
 8. Collect official/source assets during development. Record the original URL, author, attribution, and reuse-rights status. Do not assume attribution alone grants reuse rights.
-9. Obtain user approval before expensive asset generation. Source-media downloads are allowed when requested, but preserve provenance and never bypass access controls.
+9. Stop production if no source image or video has been collected. Source-media downloads are allowed when requested, but preserve provenance and never bypass access controls.
+10. Use ImageGen only when the user asks for an additional original illustration. Store it as `data/assets/<story-id>/imagegen-<name>.png` or `.jpg`; never use SVG, local placeholder art, or a direct image-model API in this project.
 
 ## Produce
 
@@ -101,15 +103,16 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
    - source list and fact-check notes
    - asset manifest with origin and usage rights
    - upload checklist
-5. Use source media as the visual baseline. Do not add generated covers, decorative AI art, or placeholder videos unless requested.
-6. Run an editorial pass:
+5. Use source media as the required visual baseline and add explicit source attribution to the caption. Reject production if source media is missing.
+6. Do not add generated covers, decorative AI art, or placeholder videos. When an illustration is explicitly requested, use the ImageGen skill, output PNG/JPG, and keep it supplemental to source media.
+7. Run an editorial pass:
    - remove generic AI phrases and fake enthusiasm
    - vary sentence length
    - distinguish facts, inference, and opinion
    - preserve uncertainty
    - ensure the piece adds a new angle
-7. Save deliverables under `data/results/<content-id>/` when working in the project.
-8. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
+8. Save deliverables under `data/results/<content-id>/` when working in the project.
+9. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
 
 ## Authentication
 

@@ -57,8 +57,16 @@ assets:
   - path:
     source_url:
     type:
+    origin: source | imagegen
     usage_rights:
     attribution:
+
+Asset invariants:
+
+- At least one image or video with `origin: source` is required before production.
+- Every source asset must retain its original URL and attribution.
+- ImageGen illustrations are optional, must be PNG/JPG, and cannot satisfy the source-media requirement.
+- SVG, generated placeholders, and unattributed copied media are prohibited.
 
 status: collected | verified | selected | scripted | designed | approved | published
 human_approval:
@@ -81,14 +89,13 @@ Return a table with:
 
 ```text
 <content-id>/
-├── brief.yaml
-├── title-and-hooks.md
-├── script.md
-├── caption.md
-├── sources.md
-├── fact-check.md
-├── asset-manifest.yaml
-├── upload-checklist.md
-└── assets/
+|-- brief.yaml
+|-- title-and-hooks.md
+|-- script.md
+|-- caption.md
+|-- sources.md
+|-- fact-check.md
+|-- asset-manifest.yaml
+|-- upload-checklist.md
+`-- assets/
 ```
-

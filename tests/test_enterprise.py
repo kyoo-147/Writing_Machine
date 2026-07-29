@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from content_machine.connectors import story_from_social
 from content_machine.core import Database, Story, score_story
-from content_machine.enterprise import AccessControl, ClaimChecker, JobQueue, LLMWriter, MediaGenerator, OAuthManager, ObjectStore, PlatformPublisher
+from content_machine.enterprise import AccessControl, ClaimChecker, JobQueue, LLMWriter, OAuthManager, ObjectStore, PlatformPublisher
 from content_machine.pipeline import ContentMachine
 
 
@@ -79,17 +79,11 @@ class EnterpriseTests(unittest.TestCase):
         url = mocked_request.call_args.args[0]
         self.assertEqual(url, "https://api.x.com/2/tweets")
 
-    @patch("content_machine.enterprise.request")
-    def test_oauth_url_and_model_image_contract(self, mocked_request):
+    def test_oauth_url_contract(self):
         with patch.dict(os.environ, {"X_CLIENT_ID": "client", "X_REDIRECT_URI": "https://local.test/callback"}):
             url = OAuthManager().authorization_url("x", "state-123", "challenge-123")
         self.assertIn("code_challenge=challenge-123", url)
         self.assertIn("tweet.write", urllib_parse(url))
-        mocked_request.return_value = json.dumps({"data": [{"b64_json": "aW1hZ2U="}]}).encode()
-        target = Path(self.temp.name, "generated.png")
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
-            MediaGenerator().generate_image("editorial AI image", target)
-        self.assertEqual(target.read_bytes(), b"image")
 
 
 def urllib_parse(url):
