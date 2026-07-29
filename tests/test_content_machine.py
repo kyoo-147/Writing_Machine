@@ -61,6 +61,7 @@ class ContentMachineTests(unittest.TestCase):
         ):
             self.assertTrue(Path(package["path"], filename).exists(), filename)
         self.assertEqual(len(list(Path(package["path"], "assets").iterdir())), 2)
+        self.assertEqual(package["image_text"]["status"], "awaiting-user-decision")
         self.assertEqual(self.machine.publish(story.id, "tiktok")["status"], "dry-run")
         public = Path(package["path"], "caption.txt").read_text(encoding="utf-8")
         self.assertNotIn("DISCOVERY_SOURCE_CHECKED", public)
@@ -75,6 +76,18 @@ class ContentMachineTests(unittest.TestCase):
         (asset_dir / "imagegen-diagram.png").write_bytes(b"generated-illustration")
         with self.assertRaisesRegex(RuntimeError, "Source media is required"):
             self.machine.produce(story.id)
+
+    def test_visual_deduplication_keeps_higher_resolution(self):
+        from PIL import Image
+
+        asset_dir = self.machine.root / "dedup"
+        asset_dir.mkdir(parents=True)
+        low = asset_dir / "low.jpg"
+        high = asset_dir / "high.webp"
+        Image.new("RGB", (100, 50), "#336699").save(low)
+        Image.new("RGB", (1000, 500), "#336699").save(high)
+        result = self.machine._deduplicate_visuals([low, high])
+        self.assertEqual(result, [high])
 
     def test_fingerprint_removes_tracking(self):
         self.assertEqual(

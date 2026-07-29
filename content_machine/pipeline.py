@@ -184,6 +184,48 @@ class ContentMachine:
         self.db.event("asset_downloaded", story_id, {"url": url, "path": str(target), "bytes": len(data)})
         return target
 
+    @staticmethod
+    def _deduplicate_visuals(paths: list[Path]) -> list[Path]:
+        try:
+            from PIL import Image, ImageOps
+        except ImportError:
+            return paths
+        kept: list[dict[str, Any]] = []
+        videos: list[Path] = []
+        for path in paths:
+            if path.suffix.lower() in {".mp4", ".mov", ".webm"}:
+                videos.append(path)
+                continue
+            try:
+                with Image.open(path) as raw:
+                    image = ImageOps.exif_transpose(raw).convert("L")
+                    area = image.width * image.height
+                    resized = image.resize((9, 8))
+                    pixels = list(
+                        resized.get_flattened_data() if hasattr(resized, "get_flattened_data") else resized.getdata()
+                    )
+                signature = sum(
+                    1 << index
+                    for index, (left, right) in enumerate(zip(pixels, pixels[1:]))
+                    if index % 9 != 8 and left > right
+                )
+            except Exception:
+                kept.append({"path": path, "signature": None, "area": 0})
+                continue
+            duplicate_index = next(
+                (
+                    index for index, item in enumerate(kept)
+                    if item["signature"] is not None and (item["signature"] ^ signature).bit_count() <= 1
+                ),
+                None,
+            )
+            record = {"path": path, "signature": signature, "area": area}
+            if duplicate_index is None:
+                kept.append(record)
+            elif area > kept[duplicate_index]["area"]:
+                kept[duplicate_index] = record
+        return [item["path"] for item in kept] + videos
+
     def produce(self, story_id: str, platform: str = "tiktok", fmt: str = "carousel", tone: str = "skeptical") -> dict[str, Any]:
         story = self.db.get_story(story_id)
         if not story:
@@ -204,12 +246,48 @@ class ContentMachine:
             if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
             and not path.name.lower().startswith(("imagegen-", "generated", "cover", "preview"))
         ]
-        if image_url and not existing_images:
-            suffix = Path(urllib.parse.urlsplit(image_url).path).suffix or ".jpg"
+        existing_digests = {
+            hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in existing_images
+        }
+        image_entries = story.metadata.get("images", [])
+        if not isinstance(image_entries, list):
+            image_entries = []
+        normalized_entries = [
+            item if isinstance(item, dict) else {"url": str(item), "alt": ""}
+            for item in image_entries
+        ]
+        if image_url and image_url not in {item.get("url") for item in normalized_entries}:
+            normalized_entries.insert(0, {"url": image_url, "alt": "Article hero"})
+        source_manifest_path = source_asset_dir / "source-assets.json"
+        try:
+            source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            source_manifest = {}
+        for index, item in enumerate(normalized_entries, 1):
+            asset_url = str(item.get("url") or "")
+            if not asset_url:
+                continue
+            suffix = Path(urllib.parse.urlsplit(asset_url).path).suffix.lower()
+            if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+                suffix = ".jpg"
+            filename = f"source-page-{index:02d}-{hashlib.sha1(asset_url.encode()).hexdigest()[:8]}{suffix}"
+            target = source_asset_dir / filename
+            if target.exists():
+                source_manifest[filename] = {"url": asset_url, "alt": str(item.get("alt") or ""), "article_url": story.url}
+                continue
             try:
-                (source_asset_dir / f"source-image{suffix}").write_bytes(request(image_url))
+                payload = request(asset_url)
+                digest = hashlib.sha256(payload).hexdigest()
+                if digest in existing_digests:
+                    continue
+                target.write_bytes(payload)
+                existing_digests.add(digest)
+                source_manifest[filename] = {"url": asset_url, "alt": str(item.get("alt") or ""), "article_url": story.url}
             except Exception as exc:
-                self.db.event("source_asset_download_failed", story.id, {"url": image_url, "error": str(exc)})
+                self.db.event("source_asset_download_failed", story.id, {"url": asset_url, "error": str(exc)})
+        if source_manifest:
+            source_manifest_path.write_text(json.dumps(source_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         source_files = [
             path for path in source_asset_dir.iterdir()
             if path.is_file()
@@ -217,13 +295,16 @@ class ContentMachine:
             and not path.name.lower().startswith(("generated", "cover", "preview"))
             and (not path.name.lower().startswith("imagegen-") or path.suffix.lower() in {".jpg", ".jpeg", ".png"})
         ]
+        source_files = self._deduplicate_visuals(source_files)
         for path in source_files:
             media_type = "video" if path.suffix.lower() in {".mp4", ".mov", ".webm"} else "image"
             is_imagegen = path.name.lower().startswith("imagegen-") and path.suffix.lower() in {".jpg", ".jpeg", ".png"}
             assets.append({
                 "path": str(path), "type": media_type,
                 "origin": "imagegen" if is_imagegen else "source",
-                "source_url": None if is_imagegen else story.url,
+                "source_url": None if is_imagegen else source_manifest.get(path.name, {}).get("url", story.url),
+                "article_url": None if is_imagegen else story.url,
+                "alt": source_manifest.get(path.name, {}).get("alt", ""),
                 "attribution": "ImageGen illustration" if is_imagegen else story.source,
                 "rights": "project-generated" if is_imagegen else "source-owned; review reuse rights and provide attribution",
             })
@@ -272,7 +353,24 @@ class ContentMachine:
             "claims": developed["claims"], "citations": developed["citations"],
             "assets": assets,
             "asset_policy": "source-required",
-            "checklist": ["Review unverified claims", "Review source attribution and reuse rights", "Validate source links", "Obtain human approval before publishing"],
+            "image_text": {
+                "status": "awaiting-user-decision",
+                "allowed_outputs": ["png", "jpg"],
+                "requirements": [
+                    "Ask the user before adding text to any image",
+                    "Analyze contrast, saliency, existing text, faces, logos and protected content before placement",
+                    "Use only short summaries or key points on the image",
+                    "Keep the long caption in the post caption",
+                    "Preserve every original source image unchanged",
+                ],
+            },
+            "checklist": [
+                "Confirm whether the user wants summary text on images",
+                "Review unverified claims",
+                "Review source attribution and reuse rights",
+                "Validate source links",
+                "Obtain human approval before publishing",
+            ],
             "qa_internal": qa_canary(self.db, "produce"),
             "created_at": utcnow(),
         }

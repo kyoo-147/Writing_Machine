@@ -145,6 +145,7 @@ class _ArticleParser(HTMLParser):
         self.title = ""
         self.description = ""
         self.image = ""
+        self.images: list[dict[str, str]] = []
         self.published = ""
         self._in_title = False
         self._article_depth = 0
@@ -171,6 +172,26 @@ class _ArticleParser(HTMLParser):
                 self.image = self.image or value
             elif key in {"article:published_time", "date", "datePublished"} and value:
                 self.published = self.published or value
+        if tag == "img" and self._article_depth:
+            source = ""
+            responsive = attributes.get("data-srcset") or attributes.get("srcset") or ""
+            if responsive:
+                candidates = [
+                    item.strip().split()[0]
+                    for item in responsive.split(",")
+                    if item.strip()
+                ]
+                source = candidates[-1] if candidates else ""
+            loading = attributes.get("data-loading", "")
+            if loading:
+                try:
+                    source = json.loads(loading).get("desktop") or source
+                except json.JSONDecodeError:
+                    pass
+            source = source or attributes.get("data-src") or attributes.get("src") or ""
+            alt = re.sub(r"\s+", " ", attributes.get("alt", "")).strip()
+            if source and not source.startswith("data:") and not source.lower().split("?", 1)[0].endswith(".svg"):
+                self.images.append({"url": source, "alt": alt})
 
     def handle_endtag(self, tag):
         if tag == "title":
@@ -195,6 +216,17 @@ def collect_web(url: str) -> list[Story]:
     parser.feed(request(url).decode("utf-8", errors="replace"))
     article = " ".join(parser._article_text or parser._text)
     summary = f"{parser.description} {article}".strip()
+    images = []
+    seen_images = set()
+    for image in parser.images:
+        resolved = urllib.parse.urljoin(url, image["url"])
+        if resolved not in seen_images:
+            seen_images.add(resolved)
+            images.append({"url": resolved, "alt": image["alt"]})
+    if parser.image:
+        hero = urllib.parse.urljoin(url, parser.image)
+        if hero not in seen_images and not hero.lower().split("?", 1)[0].endswith(".svg"):
+            images.insert(0, {"url": hero, "alt": "Article hero"})
     return [Story(
         title=parser.title or url,
         url=url,
@@ -202,7 +234,7 @@ def collect_web(url: str) -> list[Story]:
         summary=summary[:5000],
         published_at=parser.published,
         kind="web",
-        metadata={"image": parser.image},
+        metadata={"image": urllib.parse.urljoin(url, parser.image) if parser.image else "", "images": images},
     )]
 
 

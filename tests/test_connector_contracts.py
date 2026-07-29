@@ -29,12 +29,22 @@ class ConnectorContractTests(unittest.TestCase):
     def test_public_article_parser(self, mocked_request):
         mocked_request.return_value = b"""<html><head><title>Model release</title>
         <meta property="og:description" content="Primary announcement">
+        <meta property="og:image" content="/hero.jpg">
         <meta property="article:published_time" content="2026-07-21"></head>
-        <body><article><h1>Model release</h1><p>Uses 17% fewer tokens.</p>
+        <body><article><h1>Model release</h1><img alt="Benchmark" src="/small.jpg"
+        srcset="/small.jpg 500w, /large.jpg 1600w"><img alt="Ignored vector" src="/diagram.svg">
+        <p>Uses 17% fewer tokens.</p>
         <script>ignore_this()</script></article></body></html>"""
         story = collect_web("https://blog.google/example")[0]
         self.assertIn("17% fewer tokens", story.summary)
         self.assertNotIn("ignore_this", story.summary)
+        self.assertEqual(
+            story.metadata["images"],
+            [
+                {"url": "https://blog.google/hero.jpg", "alt": "Article hero"},
+                {"url": "https://blog.google/large.jpg", "alt": "Benchmark"},
+            ],
+        )
 
     @patch("content_machine.enterprise.request")
     def test_analytics_contract(self, mocked_request):

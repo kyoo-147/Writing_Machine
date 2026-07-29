@@ -34,7 +34,8 @@ Direct TikTok, Meta and X adapters require approved developer applications, scop
 
 ## Live validation
 
-- Google Blog article ingestion was tested with the Gemini 3.6 Flash announcement, including canonical URL, primary-source authority, article text and hero image.
+- Google Blog article ingestion was tested with the Gemini 3.6 Flash announcement, including canonical URL, primary-source authority, article text and all 13 unique in-article visuals at responsive high resolution.
+- The GitHub Models retirement page contains one source illustration; the manual carousel adds three unmodified PNG page captures for the title, confirmed changes and migration guidance.
 - Authenticated X extraction was tested against Yohei Nakajima's graph-slide post, including text, video duration and engagement metrics.
 - Facebook public-page extraction works without login; the current browser session is not signed in to Facebook.
 - TikTok loads but its current unauthenticated web runtime exposes no stable content DOM. TikTok API and structured browser-import contracts are tested; account-level crawling needs a signed-in research session.
@@ -46,6 +47,8 @@ Direct TikTok, Meta and X adapters require approved developer applications, scop
 - CAPTCHA and access controls are never bypassed.
 - Asset origin and rights are recorded in each package.
 - Every package requires source image/video media; ImageGen illustrations cannot replace it.
+- Article packages collect and deduplicate all relevant in-article visuals instead of stopping at the Open Graph hero.
+- Image text remains pending until the user explicitly approves it; approved overlays preserve originals and use safe-placement analysis.
 - SVG assets and locally generated placeholder covers/videos are rejected.
 - Publishing cannot occur without `--approve`.
 

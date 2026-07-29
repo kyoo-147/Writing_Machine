@@ -19,6 +19,7 @@ Operate as the conversational coordinator for the VN Tech Lab content pipeline. 
 5. Source media is mandatory. Every production package must contain at least one image or video taken from the original source or another user-approved source, with provenance and attribution. Do not complete production without it.
 6. Never create SVG assets. If the user explicitly requests an original illustration or architecture diagram, invoke the installed ImageGen skill and save the result as PNG or JPG. ImageGen output is optional supporting media and never replaces the mandatory source media.
 7. For TikTok, include no more than five hashtags. Prefer current trend signals that are genuinely relevant to the topic, then add specific technology and channel tags. Never add an unrelated viral hashtag merely because it is popular.
+8. For article and blog sources, collect all relevant in-article images at the best available resolution. Exclude navigation graphics, logos, icons, tracking pixels, unrelated recommendations, and duplicate assets. A single Open Graph image is not sufficient when the article contains additional visuals.
 
 Use the real CLI for every phase so results are persisted, deduplicated, auditable, and reusable:
 
@@ -84,8 +85,9 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
 6. Recommend one angle and explain the tradeoff in one sentence.
 7. Run citation validation and preserve `unverified` claims as uncertainty.
 8. Collect official/source assets during development. Record the original URL, author, attribution, and reuse-rights status. Do not assume attribution alone grants reuse rights.
-9. Stop production if no source image or video has been collected. Source-media downloads are allowed when requested, but preserve provenance and never bypass access controls.
-10. Use ImageGen only when the user asks for an additional original illustration. Store it as `data/assets/<story-id>/imagegen-<name>.png` or `.jpg`; never use SVG, local placeholder art, or a direct image-model API in this project.
+9. For an article or blog, inspect the article body and responsive image sources. Download every relevant content image at the highest practical resolution, deduplicate by content, and preserve each direct image URL and alt text.
+10. Stop production if no source image or video has been collected. Source-media downloads are allowed when requested, but preserve provenance and never bypass access controls.
+11. Use ImageGen only when the user asks for an additional original illustration. Store it as `data/assets/<story-id>/imagegen-<name>.png` or `.jpg`; never use SVG, local placeholder art, or a direct image-model API in this project.
 
 ## Produce
 
@@ -109,14 +111,15 @@ Do not export cookies into the project. Do not bypass CAPTCHA, access controls, 
 5. Use source media as the required visual baseline and add explicit source attribution to the caption. Reject production if source media is missing.
 6. Do not add generated covers, decorative AI art, or placeholder videos. When an illustration is explicitly requested, use the ImageGen skill, output PNG/JPG, and keep it supplemental to source media.
 7. For TikTok, verify current hashtag signals when accessible, keep only relevant tags, and enforce a maximum of five. If trend data is unavailable, use relevance-first topic tags and do not claim that they are trending.
-8. Run an editorial pass:
+8. Before placing any caption, title, or summary text on an image, read [image-text-overlay.md](references/image-text-overlay.md) and ask the user for explicit approval. If approved, analyze contrast, saliency, existing text, faces, logos, charts, and safe placement before rendering. Put only concise key points on images; keep long copy in the post caption.
+9. Run an editorial pass:
    - remove generic AI phrases and fake enthusiasm
    - vary sentence length
    - distinguish facts, inference, and opinion
    - preserve uncertainty
    - ensure the piece adds a new angle
-9. Save deliverables under `data/results/<content-id>/` when working in the project.
-10. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
+10. Save deliverables under `data/results/<content-id>/` when working in the project.
+11. Do not auto-publish without explicit approval. The CLI enforces a dry run unless `--approve` is present.
 
 ## Authentication
 

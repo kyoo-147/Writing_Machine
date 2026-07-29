@@ -64,9 +64,12 @@ assets:
 Asset invariants:
 
 - At least one image or video with `origin: source` is required before production.
+- Article and blog packages must include all relevant in-article visuals, not only the Open Graph hero.
 - Every source asset must retain its original URL and attribution.
 - ImageGen illustrations are optional, must be PNG/JPG, and cannot satisfy the source-media requirement.
 - SVG, generated placeholders, and unattributed copied media are prohibited.
+- Text overlay requires an explicit user decision. Pending or absent approval means no image modification.
+- Approved overlays must preserve the original, avoid protected visual regions, and contain only concise key points.
 
 status: collected | verified | selected | scripted | designed | approved | published
 human_approval:

@@ -7,7 +7,7 @@ name = "vn-content-machine"
 version = "0.3.0"
 description = "Chat-first AI news research, verification, production and publishing pipeline."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["Pillow>=11.0"]
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
